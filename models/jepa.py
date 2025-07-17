@@ -1,13 +1,18 @@
 import torch.nn as nn
 from .base import BaseModel
-from .encoder import SimpleTransformerEncoder
-from .predictor import LatentPredictor
 
 class JEPA(BaseModel):
-    def __init__(self, config):
-        super().__init__(config)
-        self.encoder = SimpleTransformerEncoder(config.hidden_dim)
-        self.predictor = LatentPredictor(config.hidden_dim)
+    def __init__(self, encoder, predictor):
+        """
+        Initialize JEPA model with any encoder and predictor.
+        
+        Args:
+            encoder: Any encoder model (e.g., transformer, CNN, etc.)
+            predictor: Any predictor model for latent space prediction
+        """
+        super().__init__()
+        self.encoder = encoder
+        self.predictor = predictor
         self.loss_fn = nn.MSELoss()
 
     def forward(self, state_t, state_t1):

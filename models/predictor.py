@@ -1,10 +1,7 @@
 import torch.nn as nn
+from .base import BaseModel
 
-from models.base import BaseModel
-
-import torch.nn as nn
-
-class LatentPredictor(BaseModel):
+class Predictor(BaseModel):
     def __init__(self, hidden_dim):
         super().__init__()
         self.net = nn.Sequential(
