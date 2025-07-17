@@ -1,5 +1,5 @@
 """
-Models package for OpenJEPA.
+Models package for JEPA.
 
 This package provides a flexible JEPA implementation that can work with any encoder and predictor.
 """

@@ -1,5 +1,5 @@
 """
-Comprehensive example showing how to use the OpenJEPA data module.
+Comprehensive example showing how to use the JEPA data module.
 
 This example demonstrates:
 1. Creating different types of datasets
@@ -15,8 +15,8 @@ import os
 import tempfile
 
 # Import JEPA components
-from models import JEPA, Encoder, Predictor
-from data import (
+from jepa.models import JEPA, Encoder, Predictor
+from jepa.data import (
     # Datasets
     SyntheticDataset,
     ImageSequenceDataset,
@@ -631,7 +631,7 @@ def example_hf_training_pipeline():
 
 def main():
     """Run all data examples."""
-    print("OpenJEPA Data Module Examples")
+    print("JEPA Data Module Examples")
     print("=" * 50)
     
     # Run examples

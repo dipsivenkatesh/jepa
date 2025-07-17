@@ -8,9 +8,9 @@ from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 
 # Import JEPA components
-from models import JEPA, Encoder, Predictor
-from trainer import JEPATrainer, create_trainer, quick_evaluate
-from trainer.utils import setup_reproducibility, log_model_summary, create_experiment_dir
+from jepa.models import JEPA, Encoder, Predictor
+from jepa.trainer import JEPATrainer, create_trainer, quick_evaluate
+from jepa.trainer.utils import setup_reproducibility, log_model_summary, create_experiment_dir
 
 
 class DummyDataset:

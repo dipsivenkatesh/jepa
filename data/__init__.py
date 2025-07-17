@@ -1,5 +1,5 @@
 """
-Data utilities for OpenJEPA.
+Data utilities for JEPA.
 
 Provides dataset classes, transforms, and utilities for loading and preprocessing
 data for JEPA training. Includes optional HuggingFace compatibility.

@@ -294,7 +294,7 @@ def create_jepa_dataset_card(
 ## Usage with JEPA
 
 ```python
-from openjepa.data.hf_compatibility import HuggingFaceJEPADataset
+from jepa.data.hf_compatibility import HuggingFaceJEPADataset
 from datasets import load_dataset
 
 # Load dataset
@@ -306,7 +306,7 @@ jepa_dataset = HuggingFaceJEPADataset(hf_dataset["train"])
 ```
 
 ## Data Format
-This dataset is compatible with the OpenJEPA library and provides (state_t, state_t1) pairs for joint-embedding predictive architectures.
+This dataset is compatible with the JEPA library and provides (state_t, state_t1) pairs for joint-embedding predictive architectures.
 """
     return card
 

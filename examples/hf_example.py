@@ -1,5 +1,5 @@
 """
-HuggingFace datasets integration examples for OpenJEPA.
+HuggingFace datasets integration examples for JEPA.
 
 This example demonstrates how to use HuggingFace datasets with JEPA models,
 including loading popular datasets, creating custom datasets, and training.
@@ -322,7 +322,7 @@ The dataset contains synthetic feature vectors that can be used for self-supervi
 """
     
     usage_example = """
-from openjepa.data import HuggingFaceJEPADataset
+from jepa.data import HuggingFaceJEPADataset
 from torch.utils.data import DataLoader
 
 # Load and use with JEPA
@@ -346,7 +346,7 @@ for state_t, state_t1 in loader:
 
 def main():
     """Run all HuggingFace examples."""
-    print("OpenJEPA HuggingFace Integration Examples")
+    print("JEPA HuggingFace Integration Examples")
     print("=" * 60)
     
     if not is_huggingface_available():

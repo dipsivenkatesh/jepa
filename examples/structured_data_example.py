@@ -12,7 +12,7 @@ import csv
 import os
 import tempfile
 
-from openjepa.data import JSONDataset, CSVDataset, PickleDataset, create_dataset
+from jepa.data import JSONDataset, CSVDataset, PickleDataset, create_dataset
 
 
 def create_sample_json_data():
