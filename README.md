@@ -1,4 +1,4 @@
-# OpenJEPA
+# JEPA
 
 A JEPA (Joint Embedding Predictive Architecture) training framework to train JEPAs.
 
@@ -10,5 +10,5 @@ A JEPA (Joint Embedding Predictive Architecture) training framework to train JEP
 ## Getting Started
 ```bash
 pip install -e .
-openjepa-train
+jepa-train
 ```

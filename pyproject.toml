@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openjepa"
+name = "jepa"
 version = "0.1.0"
 description = "A JEPA training framework"
 authors = [ { name="Dilip Venkatesh", email="your.email@example.com" } ]

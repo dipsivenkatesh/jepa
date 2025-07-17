@@ -34,7 +34,7 @@ def test_structured_datasets():
         
         # Test single array format
         try:
-            from openjepa.data.dataset import JSONDataset
+            from jepa.data.dataset import JSONDataset
             
             dataset1 = JSONDataset(
                 json_path=json_path,
@@ -63,7 +63,7 @@ def test_structured_datasets():
         print("\n2. Testing CSVDataset...")
         
         try:
-            from openjepa.data.dataset import CSVDataset
+            from jepa.data.dataset import CSVDataset
             
             # Create sample CSV data
             df = pd.DataFrame({
@@ -106,7 +106,7 @@ def test_structured_datasets():
         print("\n3. Testing PickleDataset...")
         
         try:
-            from openjepa.data.dataset import PickleDataset
+            from jepa.data.dataset import PickleDataset
             
             # Create sample pickle data
             pickle_data = {
@@ -147,7 +147,7 @@ def test_structured_datasets():
         print("\n4. Testing factory function...")
         
         try:
-            from openjepa.data.dataset import create_dataset
+            from jepa.data.dataset import create_dataset
             
             # Test JSON factory
             dataset_json = create_dataset(

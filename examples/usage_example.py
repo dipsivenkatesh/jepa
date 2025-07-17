@@ -4,9 +4,9 @@ Example demonstrating how to use the reusable JEPA model with different encoders
 
 import torch
 import torch.nn as nn
-from models.jepa import JEPA
-from models.encoder import Encoder
-from models.predictor import Predictor
+from jepa.models.jepa import JEPA
+from jepa.models.encoder import Encoder
+from jepa.models.predictor import Predictor
 
 
 class CNNEncoder(nn.Module):

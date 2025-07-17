@@ -1,6 +1,6 @@
 # Structured Data Formats for JEPA
 
-The OpenJEPA data module supports multiple structured data formats, making it easy to work with data stored in various file formats. This includes JSON, CSV, Pickle, and other formats with flexible data organization.
+The JEPA data module supports multiple structured data formats, making it easy to work with data stored in various file formats. This includes JSON, CSV, Pickle, and other formats with flexible data organization.
 
 ## New Dataset Classes
 
@@ -21,7 +21,7 @@ All these classes support two main data organization patterns:
 
 ### JSONDataset - Single Array Format
 ```python
-from openjepa.data import JSONDataset
+from jepa.data import JSONDataset
 
 # JSON: {"data": [[1,2,3], [1.1,2.1,3.1], [1.2,2.2,3.2], ...]}
 dataset = JSONDataset(
@@ -43,7 +43,7 @@ dataset = JSONDataset(
 
 ### CSVDataset Examples
 ```python
-from openjepa.data import CSVDataset
+from jepa.data import CSVDataset
 
 # Single columns format
 dataset = CSVDataset(
@@ -65,7 +65,7 @@ dataset = CSVDataset(csv_path="data.csv", time_offset=1)
 
 ### PickleDataset Examples
 ```python
-from openjepa.data import PickleDataset
+from jepa.data import PickleDataset
 
 # Dictionary format
 dataset = PickleDataset(
@@ -84,7 +84,7 @@ dataset = PickleDataset(
 
 ### Factory Function
 ```python
-from openjepa.data import create_dataset
+from jepa.data import create_dataset
 
 # Creates appropriate dataset based on type
 dataset = create_dataset(
