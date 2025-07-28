@@ -47,11 +47,27 @@ class DataConfig:
 
 
 @dataclass
+class WandbConfig:
+    """Weights & Biases logging configuration."""
+    enabled: bool = False
+    project: str = "jepa"
+    entity: Optional[str] = None
+    name: Optional[str] = None
+    tags: Optional[list] = None
+    notes: Optional[str] = None
+    log_model: bool = True
+    log_gradients: bool = False
+    log_freq: int = 100
+    watch_model: bool = True
+
+
+@dataclass
 class JEPAConfig:
     """Main JEPA configuration."""
     model: ModelConfig
     training: TrainingConfig
     data: DataConfig
+    wandb: WandbConfig
     device: str = "auto"
     seed: int = 42
     output_dir: str = "./outputs"
@@ -76,6 +92,7 @@ def load_config(config_path: str) -> JEPAConfig:
         model=ModelConfig(**config_dict.get('model', {})),
         training=TrainingConfig(**config_dict.get('training', {})),
         data=DataConfig(**config_dict.get('data', {})),
+        wandb=WandbConfig(**config_dict.get('wandb', {})),
         device=config_dict.get('device', 'auto'),
         seed=config_dict.get('seed', 42),
         output_dir=config_dict.get('output_dir', './outputs'),
@@ -102,7 +119,8 @@ def create_default_config() -> JEPAConfig:
     return JEPAConfig(
         model=ModelConfig(),
         training=TrainingConfig(),
-        data=DataConfig()
+        data=DataConfig(),
+        wandb=WandbConfig()
     )
 
 
@@ -140,5 +158,17 @@ def override_config_with_args(config: JEPAConfig, args: argparse.Namespace) -> J
         config.output_dir = args.output_dir
     if hasattr(args, 'checkpoint_dir') and args.checkpoint_dir:
         config.checkpoint_dir = args.checkpoint_dir
+    
+    # Override wandb settings if provided
+    if hasattr(args, 'wandb') and args.wandb:
+        config.wandb.enabled = True
+    if hasattr(args, 'wandb_project') and args.wandb_project:
+        config.wandb.project = args.wandb_project
+    if hasattr(args, 'wandb_entity') and args.wandb_entity:
+        config.wandb.entity = args.wandb_entity
+    if hasattr(args, 'wandb_name') and args.wandb_name:
+        config.wandb.name = args.wandb_name
+    if hasattr(args, 'wandb_tags') and args.wandb_tags:
+        config.wandb.tags = args.wandb_tags
     
     return config

@@ -32,7 +32,9 @@ python -m jepa.cli train \
     --train-data /path/to/train_data.npy \
     --val-data /path/to/val_data.npy \
     --experiment-name my_experiment \
-    --num-epochs 100
+    --num-epochs 100 \
+    --wandb \
+    --wandb-project my-jepa-project
 ```
 
 ### 3. Evaluate a Model
@@ -69,6 +71,13 @@ Train a JEPA model with the specified configuration.
 - `--resume`: Path to checkpoint to resume from
 - `--generate-config`: Generate a default configuration file
 
+**Wandb Arguments:**
+- `--wandb`: Enable Weights & Biases logging
+- `--wandb-project`: Wandb project name
+- `--wandb-entity`: Wandb entity (username or team)
+- `--wandb-name`: Wandb run name
+- `--wandb-tags`: Wandb tags (space-separated)
+
 **Example:**
 ```bash
 python -m jepa.cli train \
@@ -78,7 +87,10 @@ python -m jepa.cli train \
     --experiment-name vision_experiment \
     --num-epochs 50 \
     --batch-size 64 \
-    --device cuda
+    --device cuda \
+    --wandb \
+    --wandb-project jepa-experiments \
+    --wandb-tags vision cnn
 ```
 
 ### `evaluate`
@@ -167,6 +179,19 @@ seed: 42                          # Random seed
 output_dir: "./outputs"           # Output directory
 checkpoint_dir: "./checkpoints"   # Checkpoint directory
 experiment_name: "jepa_experiment" # Experiment name
+
+# Weights & Biases configuration
+wandb:
+  enabled: false                   # Enable wandb logging
+  project: "jepa"                  # Wandb project name
+  entity: null                     # Wandb entity (username/team)
+  name: null                       # Run name (defaults to experiment_name)
+  tags: null                       # List of tags
+  notes: null                      # Run description
+  log_model: true                  # Log model checkpoints as artifacts
+  log_gradients: false             # Log gradients (expensive)
+  log_freq: 100                    # Logging frequency
+  watch_model: true                # Watch model architecture
 ```
 
 ## Data Format
@@ -179,6 +204,78 @@ The CLI expects data in NumPy array format (`.npy` files) with the following str
   - `D`: Feature dimension (should match `data.input_dim` in config)
 
 For JEPA training, the data should contain consecutive time steps where the model learns to predict `t+1` from `t`.
+
+## Weights & Biases Integration
+
+The JEPA CLI includes seamless integration with [Weights & Biases](https://wandb.ai) for experiment tracking, logging, and visualization.
+
+### Setup
+
+1. **Install wandb** (if not already installed):
+```bash
+pip install wandb
+```
+
+2. **Login to wandb**:
+```bash
+wandb login
+```
+
+### Usage
+
+#### Via Configuration File
+```yaml
+wandb:
+  enabled: true
+  project: "my-jepa-project"
+  entity: "my-team"
+  tags: ["vision", "transformer"]
+  notes: "Experimenting with JEPA on image data"
+  log_model: true
+  log_gradients: false
+```
+
+#### Via Command Line
+```bash
+python -m jepa.cli train \
+    --config config.yaml \
+    --wandb \
+    --wandb-project my-jepa-project \
+    --wandb-entity my-team \
+    --wandb-tags vision transformer \
+    --wandb-name experiment-1
+```
+
+### What Gets Logged
+
+- **Training metrics**: Loss, learning rate, epoch progress
+- **Validation metrics**: Validation loss, best loss tracking
+- **System metrics**: GPU/CPU utilization, memory usage
+- **Model architecture**: Network structure and parameters
+- **Hyperparameters**: All configuration parameters
+- **Model artifacts**: Best model checkpoints (optional)
+- **Gradients**: Gradient histograms (optional)
+
+### Wandb Features
+
+- **Real-time monitoring**: Track training progress live
+- **Hyperparameter sweeps**: Optimize hyperparameters automatically
+- **Model comparison**: Compare multiple runs side-by-side
+- **Collaboration**: Share experiments with team members
+- **Reproducibility**: Full experiment tracking and code versioning
+
+### Configuration Options
+
+- `enabled`: Enable/disable wandb logging
+- `project`: Project name for organizing experiments
+- `entity`: Username or team name
+- `name`: Custom run name (defaults to experiment_name)
+- `tags`: List of tags for categorizing runs
+- `notes`: Description of the experiment
+- `log_model`: Save model checkpoints as wandb artifacts
+- `log_gradients`: Log gradient histograms (can be memory intensive)
+- `log_freq`: Frequency of detailed logging
+- `watch_model`: Monitor model architecture and gradients
 
 ## Output Files
 

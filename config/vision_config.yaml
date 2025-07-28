@@ -32,6 +32,19 @@ data:
   sequence_length: 1               # Single images (no temporal sequence)
   input_dim: [3, 224, 224]         # RGB images, 224x224 resolution
 
+# Weights & Biases logging configuration
+wandb:
+  enabled: false                   # Enable wandb logging
+  project: "jepa-vision"           # Project name for vision tasks
+  entity: null                     # Wandb entity
+  name: null                       # Run name
+  tags: ["vision", "cnn"]          # Tags for vision experiments
+  notes: "JEPA for computer vision tasks"
+  log_model: true                  # Log model artifacts
+  log_gradients: false             # Log gradients
+  log_freq: 50                     # More frequent logging for vision
+  watch_model: true                # Watch model
+
 # General configuration
 device: "auto"                     # Auto-detect GPU/CPU
 seed: 42                          # Random seed

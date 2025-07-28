@@ -32,6 +32,19 @@ data:
   sequence_length: 10              # Sequence length for temporal data
   input_dim: 784                   # Input dimension
 
+# Weights & Biases logging configuration
+wandb:
+  enabled: false                   # Enable wandb logging
+  project: "jepa"                  # Wandb project name
+  entity: null                     # Wandb entity (username or team)
+  name: null                       # Run name (defaults to experiment_name)
+  tags: null                       # List of tags for the run
+  notes: null                      # Notes for the run
+  log_model: true                  # Log model checkpoints as artifacts
+  log_gradients: false             # Log gradients (can be expensive)
+  log_freq: 100                    # Frequency of gradient/parameter logging
+  watch_model: true                # Watch model architecture
+
 # General configuration
 device: "auto"                     # Device: "auto", "cuda", or "cpu"
 seed: 42                          # Random seed for reproducibility
