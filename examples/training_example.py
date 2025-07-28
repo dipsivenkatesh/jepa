@@ -1,16 +1,25 @@
 """
-Complete training example showing how to use the JEPA training framework.
+Complete training example showing how to use the JEPA training framework with centralized logging.
 """
 
+import os
+import sys
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
 
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Import JEPA components
-from jepa.models import JEPA, Encoder, Predictor
-from jepa.trainer import JEPATrainer, create_trainer, quick_evaluate
-from jepa.trainer.utils import setup_reproducibility, log_model_summary, create_experiment_dir
+from models.jepa import JEPA
+from models.encoder import create_encoder
+from models.predictor import create_predictor
+from trainer.trainer import JEPATrainer, create_trainer
+from loggers.multi_logger import MultiLogger
+from loggers.console_logger import ConsoleLogger
+from loggers.tensorboard_logger import TensorBoardLogger
 
 
 class DummyDataset:
@@ -40,25 +49,27 @@ class DummyDataset:
 
 def create_sample_model(hidden_dim: int = 256) -> JEPA:
     """Create a sample JEPA model for demonstration."""
-    encoder = Encoder(hidden_dim)
-    predictor = Predictor(hidden_dim)
+    encoder = create_encoder("mlp", hidden_dim)
+    predictor = create_predictor("mlp", hidden_dim)
     return JEPA(encoder, predictor)
 
 
 def training_example():
-    """Complete training example."""
+    """Complete training example with centralized logging."""
     
     # Setup
-    setup_reproducibility(42)
-    experiment_dir = create_experiment_dir("./experiments", "jepa_demo")
+    torch.manual_seed(42)
+    experiment_dir = "./experiments/jepa_demo"
+    os.makedirs(experiment_dir, exist_ok=True)
     print(f"Experiment directory: {experiment_dir}")
     
     # Model configuration
     hidden_dim = 256
     model = create_sample_model(hidden_dim)
     
-    # Log model info
-    log_model_summary(model, input_shape=(10, hidden_dim))
+    # Print model info
+    print(f"Model: {model}")
+    print(f"Number of parameters: {sum(p.numel() for p in model.parameters())}")
     
     # Create datasets
     print("Creating datasets...")
@@ -68,15 +79,45 @@ def training_example():
     train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
     
-    # Create trainer with custom settings
+    # Create centralized logger
+    print("Setting up logging...")
+    loggers = []
+    
+    # Console logger
+    console_logger = ConsoleLogger(
+        log_file=f"{experiment_dir}/training.log",
+        level="INFO"
+    )
+    loggers.append(console_logger)
+    
+    # TensorBoard logger
+    tensorboard_logger = TensorBoardLogger(
+        log_dir=f"{experiment_dir}/tensorboard",
+        comment="jepa_demo"
+    )
+    loggers.append(tensorboard_logger)
+    
+    # Create multi-logger
+    multi_logger = MultiLogger(loggers)
+    
+    # Log hyperparameters
+    hyperparams = {
+        "model_type": "JEPA",
+        "hidden_dim": hidden_dim,
+        "learning_rate": 1e-3,
+        "weight_decay": 1e-4,
+        "batch_size": 32,
+        "num_epochs": 50
+    }
+    multi_logger.log_hyperparameters(hyperparams)
+    
+    # Create trainer with centralized logging
     print("Setting up trainer...")
     trainer = create_trainer(
         model=model,
         learning_rate=1e-3,
         weight_decay=1e-4,
-        save_dir=f"{experiment_dir}/checkpoints",
-        log_interval=10,
-        gradient_clip_norm=1.0
+        logger=multi_logger  # Pass the centralized logger
     )
     
     # Train the model
@@ -89,16 +130,26 @@ def training_example():
         early_stopping_patience=15
     )
     
-    # Evaluate the model
+    # Simple evaluation
     print("Evaluating model...")
-    final_metrics = quick_evaluate(model, val_loader)
-    print("Final validation metrics:")
-    for metric, value in final_metrics.items():
-        print(f"  {metric}: {value:.6f}")
+    model.eval()
+    total_loss = 0
+    num_batches = 0
     
-    # Save training history and config
-    from trainer.utils import save_training_config, plot_training_history
+    with torch.no_grad():
+        for state_t, state_t1 in val_loader:
+            loss = trainer._compute_loss(state_t, state_t1)
+            total_loss += loss.item()
+            num_batches += 1
     
+    final_val_loss = total_loss / num_batches
+    print(f"Final validation loss: {final_val_loss:.6f}")
+    
+    # Close loggers
+    multi_logger.close()
+    
+    # Save training history
+    import json
     config = {
         "model_type": "JEPA",
         "hidden_dim": hidden_dim,
@@ -106,27 +157,24 @@ def training_example():
         "weight_decay": 1e-4,
         "batch_size": 32,
         "num_epochs": 50,
-        "final_train_loss": history["train_loss"][-1],
-        "final_val_loss": history["val_loss"][-1],
+        "final_val_loss": final_val_loss,
     }
     
-    save_training_config(config, f"{experiment_dir}/config.json")
-    
-    # Plot and save training curves
-    try:
-        plot_training_history(history, f"{experiment_dir}/plots/training_history.png")
-    except ImportError:
-        print("Matplotlib not available, skipping plot generation")
+    with open(f"{experiment_dir}/config.json", 'w') as f:
+        json.dump(config, f, indent=2)
     
     print(f"Training completed! Results saved to {experiment_dir}")
-    return model, history
+    return model, {"final_val_loss": final_val_loss}
 
 
 def custom_trainer_example():
-    """Example showing how to create a custom trainer configuration."""
+    """Example showing how to create a custom trainer configuration with centralized logging."""
     
     # Create model
     model = create_sample_model(hidden_dim=128)
+    
+    # Create simple console logger
+    console_logger = ConsoleLogger(level="INFO")
     
     # Custom optimizer and scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=2e-4, betas=(0.9, 0.999))
@@ -138,9 +186,7 @@ def custom_trainer_example():
         optimizer=optimizer,
         scheduler=scheduler,
         device="auto",
-        gradient_clip_norm=0.5,
-        log_interval=50,
-        save_dir="./custom_checkpoints"
+        logger=console_logger
     )
     
     print("Custom trainer created with:")
@@ -153,20 +199,26 @@ def custom_trainer_example():
 
 def main():
     """Run training examples."""
-    print("JEPA Training Framework Demo")
-    print("=" * 40)
+    print("JEPA Training Framework Demo with Centralized Logging")
+    print("=" * 55)
     
     # Run basic training example
     print("\n1. Running basic training example...")
-    model, history = training_example()
+    model, results = training_example()
     
-    print(f"\nTraining completed with final validation loss: {history['val_loss'][-1]:.6f}")
+    print(f"\nTraining completed with final validation loss: {results['final_val_loss']:.6f}")
     
     # Show custom trainer example
     print("\n2. Custom trainer configuration example...")
     custom_trainer = custom_trainer_example()
     
     print("\nDemo completed!")
+    print("\n💡 Key features demonstrated:")
+    print("   • Centralized logging with MultiLogger")
+    print("   • Console and TensorBoard logging")
+    print("   • Custom trainer configurations")
+    print("   • Automatic experiment directory setup")
+    print("   • Hyperparameter logging")
 
 
 if __name__ == "__main__":
