@@ -1,0 +1,40 @@
+# JEPA Configuration for Natural Language Processing
+# Optimized for text and sequence data
+
+# Model configuration
+model:
+  encoder_type: "transformer"      # Transformer encoder for text
+  encoder_dim: 768                 # Standard transformer dimension
+  predictor_type: "transformer"    # Transformer predictor
+  predictor_hidden_dim: 1024       # Hidden dimension
+  predictor_output_dim: 768        # Output dimension
+  dropout: 0.1                     # Dropout rate
+
+# Training configuration
+training:
+  batch_size: 16                   # Smaller batch for large sequences
+  learning_rate: 0.0001            # Lower learning rate for transformers
+  weight_decay: 0.01               # Higher weight decay
+  num_epochs: 50                   # Fewer epochs for large models
+  warmup_epochs: 5                 # Warmup epochs
+  gradient_clip_norm: 1.0          # Gradient clipping
+  save_every: 5                    # Save more frequently
+  early_stopping_patience: 10      # Early stopping patience
+  log_interval: 100                # Log frequency
+
+# Data configuration for text
+data:
+  train_data_path: ""              # Path to training text data
+  val_data_path: ""                # Path to validation text data
+  test_data_path: ""               # Path to test text data
+  num_workers: 4                   # Workers for text loading
+  pin_memory: true                 # Pin memory
+  sequence_length: 512             # Longer sequences for text
+  input_dim: 50000                 # Vocabulary size
+
+# General configuration
+device: "auto"                     # Auto-detect GPU/CPU
+seed: 42                          # Random seed
+output_dir: "./outputs"           # Output directory
+checkpoint_dir: "./checkpoints"   # Checkpoint directory
+experiment_name: "nlp_jepa"       # Experiment name
