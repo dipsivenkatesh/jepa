@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Example of using JEPA with Weights & Biases integration.
+Example of using JEPA with Weights & Biases integration through centralized logging.
 
-This script demonstrates how to set up and use wandb logging with JEPA training.
+This script demonstrates how to set up and use wandb logging with JEPA training
+using the new centralized logging architecture.
 """
 
 import os
@@ -13,7 +14,7 @@ import yaml
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def create_wandb_config_example():
-    """Create an example configuration with wandb enabled."""
+    """Create an example configuration with centralized logging including wandb."""
     
     config = {
         # Model configuration
@@ -50,18 +51,30 @@ def create_wandb_config_example():
             'input_dim': 784
         },
         
-        # Wandb configuration - ENABLED
-        'wandb': {
-            'enabled': True,
-            'project': 'jepa-examples',
-            'entity': None,  # Replace with your wandb username/team
-            'name': 'jepa-demo-run',
-            'tags': ['demo', 'example', 'jepa'],
-            'notes': 'Demo run showing JEPA with wandb integration',
-            'log_model': True,
-            'log_gradients': False,
-            'log_freq': 50,
-            'watch_model': True
+        # Centralized Logging Configuration
+        'logging': {
+            'wandb': {
+                'enabled': True,
+                'project': 'jepa-examples',
+                'entity': None,  # Replace with your wandb username/team
+                'name': 'jepa-demo-run',
+                'tags': ['demo', 'example', 'jepa'],
+                'notes': 'Demo run showing JEPA with centralized wandb integration',
+                'log_model': True,
+                'log_gradients': False,
+                'log_freq': 50,
+                'watch_model': True
+            },
+            'tensorboard': {
+                'enabled': True,
+                'log_dir': './logs/tensorboard',
+                'comment': 'jepa-wandb-demo'
+            },
+            'console': {
+                'enabled': True,
+                'level': 'INFO',
+                'file': True
+            }
         },
         
         # General configuration
@@ -76,12 +89,12 @@ def create_wandb_config_example():
 
 
 def main():
-    """Demonstrate wandb integration with JEPA."""
+    """Demonstrate wandb integration with JEPA using centralized logging."""
     
-    print("JEPA + Weights & Biases Integration Example")
-    print("=" * 50)
+    print("JEPA + Weights & Biases Integration Example (Centralized Logging)")
+    print("=" * 70)
     
-    # Create example config with wandb enabled
+    # Create example config with centralized logging including wandb
     config = create_wandb_config_example()
     
     # Save the config
@@ -90,18 +103,19 @@ def main():
         yaml.dump(config, f, default_flow_style=False, indent=2)
     
     print(f"✅ Created example config: {config_path}")
-    print("\n📋 Wandb Configuration:")
-    print(f"   Project: {config['wandb']['project']}")
-    print(f"   Run Name: {config['wandb']['name']}")
-    print(f"   Tags: {config['wandb']['tags']}")
-    print(f"   Model Logging: {config['wandb']['log_model']}")
-    print(f"   Gradient Logging: {config['wandb']['log_gradients']}")
+    print("\n📋 Centralized Logging Configuration:")
+    print(f"   Wandb Project: {config['logging']['wandb']['project']}")
+    print(f"   Wandb Run Name: {config['logging']['wandb']['name']}")
+    print(f"   Wandb Tags: {config['logging']['wandb']['tags']}")
+    print(f"   Wandb Model Logging: {config['logging']['wandb']['log_model']}")
+    print(f"   TensorBoard Enabled: {config['logging']['tensorboard']['enabled']}")
+    print(f"   Console Logging: {config['logging']['console']['enabled']}")
     
-    print("\n🚀 To run training with wandb:")
-    print(f"   python -m jepa.cli train --config {config_path}")
+    print("\n🚀 To run training with centralized wandb:")
+    print(f"   python -m cli.train --config {config_path}")
     
     print("\n💡 Alternative CLI approach:")
-    print("   python -m jepa.cli train \\")
+    print("   python -m cli.train \\")
     print("       --config config/default_config.yaml \\")
     print("       --wandb \\")
     print("       --wandb-project jepa-experiments \\")
@@ -109,30 +123,51 @@ def main():
     print("       --wandb-tags transformer vision \\")
     print("       --train-data data/train.npy")
     
-    print("\n📊 What you'll see in wandb:")
-    print("   • Real-time loss curves")
-    print("   • Learning rate schedules")
-    print("   • System metrics (GPU, memory)")
-    print("   • Model architecture visualization")
-    print("   • Hyperparameter tracking")
-    print("   • Model checkpoints (if log_model=True)")
-    print("   • Custom charts and comparisons")
+    print("\n📊 What you'll see with centralized logging:")
+    print("   • Wandb: Real-time loss curves, system metrics, model checkpoints")
+    print("   • TensorBoard: Local visualization, scalars, hyperparameters")
+    print("   • Console: Real-time terminal output + log files")
+    print("   • Unified metrics across all backends")
     
-    print("\n🔗 Useful wandb features:")
-    print("   • wandb.ai dashboard for monitoring")
-    print("   • Hyperparameter sweeps")
-    print("   • Team collaboration")
-    print("   • Experiment comparison")
-    print("   • Model registry")
+    print("\n🔗 Benefits of centralized logging:")
+    print("   • Single point of control for all logging")
+    print("   • Easy to enable/disable specific backends")
+    print("   • Consistent metrics across platforms")
+    print("   • Extensible to new logging backends")
+    print("   • Clean separation of concerns")
     
     print("\n⚙️ Setup steps:")
-    print("   1. pip install wandb")
+    print("   1. pip install wandb tensorboard")
     print("   2. wandb login")
     print("   3. Update the 'entity' field in config")
     print("   4. Run training!")
     
     print(f"\n📁 Config file created: {config_path}")
-    print("   Edit this file to customize your wandb setup.")
+    print("   Edit this file to customize your logging setup.")
+    
+    print("\n🔧 Programmatic example:")
+    print("   See training_example.py for how to create loggers programmatically")
+    
+    # Create a small programmatic example
+    print("\n💻 Quick programmatic setup:")
+    print("""
+from loggers.multi_logger import MultiLogger
+from loggers.wandb_logger import WandbLogger
+from loggers.tensorboard_logger import TensorBoardLogger
+from loggers.console_logger import ConsoleLogger
+
+# Create individual loggers
+loggers = []
+loggers.append(WandbLogger(project="my-project", name="my-run"))
+loggers.append(TensorBoardLogger(log_dir="./logs"))
+loggers.append(ConsoleLogger(log_file="training.log"))
+
+# Create unified logger
+multi_logger = MultiLogger(loggers)
+
+# Use with trainer
+trainer = create_trainer(model, logger=multi_logger)
+""")
 
 
 if __name__ == "__main__":

@@ -12,10 +12,10 @@ from pathlib import Path
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from logging.multi_logger import MultiLogger
-from logging.wandb_logger import WandbLogger
-from logging.tensorboard_logger import TensorBoardLogger
-from logging.console_logger import ConsoleLogger
+from loggers.multi_logger import MultiLogger
+from loggers.wandb_logger import WandbLogger
+from loggers.tensorboard_logger import TensorBoardLogger
+from loggers.console_logger import ConsoleLogger
 from config.config import create_default_config
 
 

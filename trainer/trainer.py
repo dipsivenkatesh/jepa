@@ -13,7 +13,7 @@ from typing import Dict, Any, Optional, Callable
 import os
 import logging
 
-from ..logging import create_logger, BaseLogger
+from ..loggers import create_logger, BaseLogger
 
 
 class JEPATrainer:

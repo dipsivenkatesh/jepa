@@ -21,10 +21,10 @@ from models.encoder import create_encoder
 from models.predictor import create_predictor
 from trainer.trainer import JEPATrainer, create_trainer
 from data.dataset import create_dataloader
-from logging.multi_logger import MultiLogger
-from logging.wandb_logger import WandbLogger
-from logging.tensorboard_logger import TensorBoardLogger
-from logging.console_logger import ConsoleLogger
+from loggers.multi_logger import MultiLogger
+from loggers.wandb_logger import WandbLogger
+from loggers.tensorboard_logger import TensorBoardLogger
+from loggers.console_logger import ConsoleLogger
 
 
 def parse_args():
@@ -261,35 +261,43 @@ def main():
     
     # Add console logger
     if config.logging.console.enabled:
-        console_logger = ConsoleLogger(
-            log_file=str(Path(exp_output_dir) / "training.log") if config.logging.console.file else None,
-            level=config.logging.console.level
-        )
+        console_config = {
+            'level': config.logging.console.level,
+            'format': config.logging.console.format,
+            'log_file': str(Path(exp_output_dir) / "training.log") if config.logging.console.file else None
+        }
+        console_logger = ConsoleLogger(console_config)
         loggers.append(console_logger)
     
     # Add wandb logger
     if config.logging.wandb.enabled:
-        wandb_logger = WandbLogger(
-            project=config.logging.wandb.project,
-            entity=config.logging.wandb.entity,
-            name=config.logging.wandb.name or config.experiment_name,
-            tags=config.logging.wandb.tags,
-            notes=config.logging.wandb.notes,
-            config={
+        wandb_config = {
+            'project': config.logging.wandb.project,
+            'entity': config.logging.wandb.entity,
+            'name': config.logging.wandb.name or config.experiment_name,
+            'tags': config.logging.wandb.tags,
+            'notes': config.logging.wandb.notes,
+            'log_model': config.logging.wandb.log_model,
+            'log_gradients': config.logging.wandb.log_gradients,
+            'log_freq': config.logging.wandb.log_freq,
+            'watch_model': config.logging.wandb.watch_model,
+            'config': {
                 'model': config.model.__dict__,
                 'training': config.training.__dict__,
                 'data': {k: v for k, v in config.data.__dict__.items() if not k.endswith('_path')},
                 'experiment_name': config.experiment_name,
             }
-        )
+        }
+        wandb_logger = WandbLogger(wandb_config)
         loggers.append(wandb_logger)
     
     # Add tensorboard logger
     if config.logging.tensorboard.enabled:
-        tensorboard_logger = TensorBoardLogger(
-            log_dir=str(Path(exp_output_dir) / "tensorboard"),
-            comment=config.experiment_name
-        )
+        tensorboard_config = {
+            'log_dir': str(Path(exp_output_dir) / "tensorboard"),
+            'comment': config.experiment_name
+        }
+        tensorboard_logger = TensorBoardLogger(tensorboard_config)
         loggers.append(tensorboard_logger)
     
     # Create multi-logger
