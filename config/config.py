@@ -62,12 +62,39 @@ class WandbConfig:
 
 
 @dataclass
+class TensorBoardConfig:
+    """TensorBoard logging configuration."""
+    enabled: bool = False
+    log_dir: str = "./tensorboard_logs"
+    comment: str = ""
+
+
+@dataclass
+class ConsoleConfig:
+    """Console logging configuration."""
+    enabled: bool = True
+    level: str = "INFO"
+    format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    file: bool = False
+    file_level: str = "DEBUG"
+    log_dir: str = "./logs"
+
+
+@dataclass
+class LoggingConfig:
+    """Comprehensive logging configuration."""
+    wandb: WandbConfig
+    tensorboard: TensorBoardConfig
+    console: ConsoleConfig
+
+
+@dataclass
 class JEPAConfig:
     """Main JEPA configuration."""
     model: ModelConfig
     training: TrainingConfig
     data: DataConfig
-    wandb: WandbConfig
+    logging: LoggingConfig
     device: str = "auto"
     seed: int = 42
     output_dir: str = "./outputs"
@@ -92,7 +119,11 @@ def load_config(config_path: str) -> JEPAConfig:
         model=ModelConfig(**config_dict.get('model', {})),
         training=TrainingConfig(**config_dict.get('training', {})),
         data=DataConfig(**config_dict.get('data', {})),
-        wandb=WandbConfig(**config_dict.get('wandb', {})),
+        logging=LoggingConfig(
+            wandb=WandbConfig(**config_dict.get('logging', {}).get('wandb', {})),
+            tensorboard=TensorBoardConfig(**config_dict.get('logging', {}).get('tensorboard', {})),
+            console=ConsoleConfig(**config_dict.get('logging', {}).get('console', {}))
+        ),
         device=config_dict.get('device', 'auto'),
         seed=config_dict.get('seed', 42),
         output_dir=config_dict.get('output_dir', './outputs'),
@@ -120,7 +151,11 @@ def create_default_config() -> JEPAConfig:
         model=ModelConfig(),
         training=TrainingConfig(),
         data=DataConfig(),
-        wandb=WandbConfig()
+        logging=LoggingConfig(
+            wandb=WandbConfig(),
+            tensorboard=TensorBoardConfig(),
+            console=ConsoleConfig()
+        )
     )
 
 
@@ -161,14 +196,14 @@ def override_config_with_args(config: JEPAConfig, args: argparse.Namespace) -> J
     
     # Override wandb settings if provided
     if hasattr(args, 'wandb') and args.wandb:
-        config.wandb.enabled = True
+        config.logging.wandb.enabled = True
     if hasattr(args, 'wandb_project') and args.wandb_project:
-        config.wandb.project = args.wandb_project
+        config.logging.wandb.project = args.wandb_project
     if hasattr(args, 'wandb_entity') and args.wandb_entity:
-        config.wandb.entity = args.wandb_entity
+        config.logging.wandb.entity = args.wandb_entity
     if hasattr(args, 'wandb_name') and args.wandb_name:
-        config.wandb.name = args.wandb_name
+        config.logging.wandb.name = args.wandb_name
     if hasattr(args, 'wandb_tags') and args.wandb_tags:
-        config.wandb.tags = args.wandb_tags
+        config.logging.wandb.tags = args.wandb_tags
     
     return config
