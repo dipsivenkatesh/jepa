@@ -103,6 +103,34 @@ def parse_args():
         help='Generate a default configuration file at specified path'
     )
     
+    # Wandb arguments
+    parser.add_argument(
+        '--wandb',
+        action='store_true',
+        help='Enable Weights & Biases logging'
+    )
+    parser.add_argument(
+        '--wandb-project',
+        type=str,
+        help='Wandb project name'
+    )
+    parser.add_argument(
+        '--wandb-entity',
+        type=str,
+        help='Wandb entity (username or team)'
+    )
+    parser.add_argument(
+        '--wandb-name',
+        type=str,
+        help='Wandb run name'
+    )
+    parser.add_argument(
+        '--wandb-tags',
+        type=str,
+        nargs='+',
+        help='Wandb tags'
+    )
+    
     return parser.parse_args()
 
 
@@ -223,11 +251,36 @@ def main():
     
     # Create trainer
     print("Creating trainer...")
+    
+    # Prepare wandb config
+    wandb_config = None
+    if config.wandb.enabled:
+        wandb_config = {
+            'enabled': config.wandb.enabled,
+            'project': config.wandb.project,
+            'entity': config.wandb.entity,
+            'name': config.wandb.name or config.experiment_name,
+            'tags': config.wandb.tags,
+            'notes': config.wandb.notes,
+            'log_model': config.wandb.log_model,
+            'log_gradients': config.wandb.log_gradients,
+            'log_freq': config.wandb.log_freq,
+            'watch_model': config.wandb.watch_model,
+        }
+        # Add config to wandb
+        wandb_config['jepa_config'] = {
+            'model': config.model.__dict__,
+            'training': config.training.__dict__,
+            'data': {k: v for k, v in config.data.__dict__.items() if not k.endswith('_path')},
+            'experiment_name': config.experiment_name,
+        }
+    
     trainer = create_trainer(
         model=model,
         learning_rate=config.training.learning_rate,
         weight_decay=config.training.weight_decay,
         device=config.device,
+        wandb_config=wandb_config,
         gradient_clip_norm=config.training.gradient_clip_norm,
         log_interval=config.training.log_interval,
         save_dir=exp_checkpoint_dir

@@ -32,6 +32,19 @@ data:
   sequence_length: 100             # Temporal sequence length
   input_dim: 32                    # Number of features/sensors
 
+# Weights & Biases logging configuration
+wandb:
+  enabled: false                   # Enable wandb logging
+  project: "jepa-timeseries"       # Project name for time series tasks
+  entity: null                     # Wandb entity
+  name: null                       # Run name
+  tags: ["timeseries", "forecasting"] # Tags for time series experiments
+  notes: "JEPA for time series analysis"
+  log_model: true                  # Log model artifacts
+  log_gradients: false             # Log gradients
+  log_freq: 200                    # Less frequent logging for longer training
+  watch_model: true                # Watch model
+
 # General configuration
 device: "auto"                     # Auto-detect GPU/CPU
 seed: 42                          # Random seed

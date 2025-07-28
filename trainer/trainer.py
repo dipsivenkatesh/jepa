@@ -13,6 +13,13 @@ from typing import Dict, Any, Optional, Callable
 import os
 import logging
 
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+    wandb = None
+
 
 class JEPATrainer:
     """
@@ -27,7 +34,8 @@ class JEPATrainer:
         scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
         gradient_clip_norm: Optional[float] = None,
         log_interval: int = 100,
-        save_dir: str = "./checkpoints"
+        save_dir: str = "./checkpoints",
+        wandb_config: Optional[Dict[str, Any]] = None
     ):
         """
         Initialize the JEPA trainer.
@@ -40,6 +48,7 @@ class JEPATrainer:
             gradient_clip_norm: Optional gradient clipping value
             log_interval: How often to log training progress
             save_dir: Directory to save checkpoints
+            wandb_config: Weights & Biases configuration dictionary
         """
         self.model = model
         self.optimizer = optimizer
@@ -47,6 +56,8 @@ class JEPATrainer:
         self.gradient_clip_norm = gradient_clip_norm
         self.log_interval = log_interval
         self.save_dir = save_dir
+        self.wandb_config = wandb_config or {}
+        self.use_wandb = WANDB_AVAILABLE and self.wandb_config.get('enabled', False)
         
         # Set device
         if device == "auto":
@@ -67,6 +78,66 @@ class JEPATrainer:
         self.current_epoch = 0
         self.global_step = 0
         self.best_loss = float('inf')
+        
+        # Initialize wandb if enabled
+        self._init_wandb()
+        
+    def _init_wandb(self):
+        """Initialize Weights & Biases logging."""
+        if not self.use_wandb:
+            return
+            
+        # Check if wandb is already initialized
+        if wandb.run is not None:
+            self.logger.info("Using existing wandb run")
+            return
+            
+        # Initialize wandb
+        wandb_init_kwargs = {
+            'project': self.wandb_config.get('project', 'jepa'),
+            'name': self.wandb_config.get('name'),
+            'entity': self.wandb_config.get('entity'),
+            'tags': self.wandb_config.get('tags'),
+            'notes': self.wandb_config.get('notes'),
+            'config': {
+                'model_params': sum(p.numel() for p in self.model.parameters()),
+                'trainable_params': sum(p.numel() for p in self.model.parameters() if p.requires_grad),
+                'optimizer': self.optimizer.__class__.__name__,
+                'scheduler': self.scheduler.__class__.__name__ if self.scheduler else None,
+                'device': str(self.device),
+                'gradient_clip_norm': self.gradient_clip_norm,
+            }
+        }
+        
+        # Remove None values
+        wandb_init_kwargs = {k: v for k, v in wandb_init_kwargs.items() if v is not None}
+        
+        try:
+            wandb.init(**wandb_init_kwargs)
+            
+            # Watch model if enabled
+            if self.wandb_config.get('watch_model', True):
+                wandb.watch(
+                    self.model, 
+                    log='all' if self.wandb_config.get('log_gradients', False) else 'parameters',
+                    log_freq=self.wandb_config.get('log_freq', 100)
+                )
+            
+            self.logger.info(f"Wandb initialized: {wandb.run.url}")
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to initialize wandb: {e}")
+            self.use_wandb = False
+    
+    def _log_to_wandb(self, metrics: Dict[str, Any], step: Optional[int] = None):
+        """Log metrics to wandb."""
+        if not self.use_wandb or wandb.run is None:
+            return
+            
+        try:
+            wandb.log(metrics, step=step)
+        except Exception as e:
+            self.logger.warning(f"Failed to log to wandb: {e}")
         
     def train_epoch(self, dataloader: DataLoader) -> Dict[str, float]:
         """
@@ -108,10 +179,18 @@ class JEPATrainer:
             
             # Log progress
             if batch_idx % self.log_interval == 0:
-                self.logger.info(
+                log_msg = (
                     f"Epoch {self.current_epoch}, Batch {batch_idx}/{len(dataloader)}, "
                     f"Loss: {loss.item():.6f}, LR: {self.optimizer.param_groups[0]['lr']:.6f}"
                 )
+                self.logger.info(log_msg)
+                
+                # Log to wandb
+                self._log_to_wandb({
+                    'train/batch_loss': loss.item(),
+                    'train/learning_rate': self.optimizer.param_groups[0]['lr'],
+                    'train/epoch': self.current_epoch,
+                }, step=self.global_step)
         
         avg_loss = total_loss / num_batches
         return {"train_loss": avg_loss}
@@ -209,6 +288,23 @@ class JEPATrainer:
                 log_msg += f", Val Loss: {val_metrics['val_loss']:.6f}"
             self.logger.info(log_msg)
             
+            # Log to wandb
+            wandb_metrics = {
+                'train/epoch_loss': train_metrics['train_loss'],
+                'train/epoch': epoch + 1,
+                'train/epoch_time': epoch_time,
+            }
+            if val_dataloader is not None:
+                wandb_metrics.update({
+                    'val/epoch_loss': val_metrics['val_loss'],
+                    'val/best_loss': self.best_loss,
+                    'val/epochs_without_improvement': epochs_without_improvement,
+                })
+            if self.scheduler is not None:
+                wandb_metrics['train/learning_rate'] = self.optimizer.param_groups[0]['lr']
+            
+            self._log_to_wandb(wandb_metrics, step=epoch + 1)
+            
             # Save checkpoint
             if (epoch + 1) % save_every == 0:
                 self.save_checkpoint(f"checkpoint_epoch_{epoch+1}.pt")
@@ -219,6 +315,11 @@ class JEPATrainer:
                 break
         
         self.logger.info("Training completed!")
+        
+        # Finish wandb run
+        if self.use_wandb and wandb.run is not None:
+            wandb.finish()
+            
         return history
     
     def save_checkpoint(self, filename: str):
@@ -234,8 +335,24 @@ class JEPATrainer:
         if self.scheduler is not None:
             checkpoint["scheduler_state_dict"] = self.scheduler.state_dict()
         
-        torch.save(checkpoint, os.path.join(self.save_dir, filename))
+        checkpoint_path = os.path.join(self.save_dir, filename)
+        torch.save(checkpoint, checkpoint_path)
         self.logger.info(f"Checkpoint saved: {filename}")
+        
+        # Log checkpoint to wandb if enabled and it's the best model
+        if self.use_wandb and wandb.run is not None and self.wandb_config.get('log_model', True):
+            if filename == "best_model.pt":
+                try:
+                    artifact = wandb.Artifact(
+                        name=f"model-{wandb.run.id}",
+                        type="model",
+                        description=f"Best JEPA model at epoch {self.current_epoch + 1}"
+                    )
+                    artifact.add_file(checkpoint_path)
+                    wandb.log_artifact(artifact)
+                    self.logger.info("Model artifact logged to wandb")
+                except Exception as e:
+                    self.logger.warning(f"Failed to log model artifact to wandb: {e}")
     
     def load_checkpoint(self, filename: str):
         """Load model checkpoint."""
@@ -259,6 +376,7 @@ def create_trainer(
     learning_rate: float = 1e-3,
     weight_decay: float = 1e-4,
     device: str = "auto",
+    wandb_config: Optional[Dict[str, Any]] = None,
     **trainer_kwargs
 ) -> JEPATrainer:
     """
@@ -269,6 +387,7 @@ def create_trainer(
         learning_rate: Learning rate for optimizer
         weight_decay: Weight decay for optimizer
         device: Device to train on
+        wandb_config: Weights & Biases configuration dictionary
         **trainer_kwargs: Additional arguments for JEPATrainer
         
     Returns:
@@ -291,5 +410,6 @@ def create_trainer(
         optimizer=optimizer,
         scheduler=scheduler,
         device=device,
+        wandb_config=wandb_config,
         **trainer_kwargs
     )

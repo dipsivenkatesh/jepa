@@ -32,6 +32,19 @@ data:
   sequence_length: 512             # Longer sequences for text
   input_dim: 50000                 # Vocabulary size
 
+# Weights & Biases logging configuration
+wandb:
+  enabled: false                   # Enable wandb logging
+  project: "jepa-nlp"             # Project name for NLP tasks
+  entity: null                     # Wandb entity
+  name: null                       # Run name
+  tags: ["nlp", "transformer"]    # Tags for NLP experiments
+  notes: "JEPA for natural language processing"
+  log_model: true                  # Log model artifacts
+  log_gradients: false             # Log gradients
+  log_freq: 100                    # Logging frequency
+  watch_model: true                # Watch model
+
 # General configuration
 device: "auto"                     # Auto-detect GPU/CPU
 seed: 42                          # Random seed
