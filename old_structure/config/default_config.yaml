@@ -1,0 +1,87 @@
+# JEPA Configuration Template
+# This is a sample configuration file for training and evaluating JEPA models
+
+# Model configuration
+model:
+  encoder_type: "transformer"      # Type of encoder: "transformer", "mlp", "cnn"
+  encoder_dim: 512                 # Hidden dimension of encoder
+  predictor_type: "mlp"            # Type of predictor: "mlp", "transformer"
+  predictor_hidden_dim: 1024       # Hidden dimension of predictor
+  predictor_output_dim: 512        # Output dimension of predictor
+  dropout: 0.1                     # Dropout rate
+
+# Training configuration
+training:
+  batch_size: 32                   # Batch size for training
+  learning_rate: 0.001             # Learning rate
+  weight_decay: 0.0001             # Weight decay for optimizer
+  num_epochs: 100                  # Number of training epochs
+  warmup_epochs: 10                # Number of warmup epochs
+  gradient_clip_norm: 1.0          # Gradient clipping norm (null to disable)
+  save_every: 10                   # Save checkpoint every N epochs
+  early_stopping_patience: 20      # Stop if no improvement for N epochs (null to disable)
+  log_interval: 100                # Log training progress every N batches
+
+# Data configuration
+data:
+  train_data_path: ""              # Path to training data (required)
+  val_data_path: ""                # Path to validation data (optional)
+  test_data_path: ""               # Path to test data (for evaluation)
+  num_workers: 4                   # Number of data loading workers
+  pin_memory: true                 # Whether to pin memory for data loading
+  sequence_length: 10              # Sequence length for temporal data
+  input_dim: 784                   # Input dimension
+
+# Weights & Biases logging configuration
+wandb:
+  enabled: false                   # Enable wandb logging
+  project: "jepa"                  # Wandb project name
+  entity: null                     # Wandb entity (username or team)
+  name: null                       # Run name (defaults to experiment_name)
+  tags: null                       # List of tags for the run
+  notes: null                      # Notes for the run
+  log_model: true                  # Log model checkpoints as artifacts
+  log_gradients: false             # Log gradients (can be expensive)
+  log_freq: 100                    # Frequency of gradient/parameter logging
+  watch_model: true                # Watch model architecture
+
+# General configuration
+device: "auto"                     # Device: "auto", "cuda", or "cpu"
+seed: 42                          # Random seed for reproducibility
+output_dir: "./outputs"           # Output directory for results
+checkpoint_dir: "./checkpoints"   # Directory for model checkpoints
+experiment_name: "jepa_experiment" # Name of the experiment
+
+# Example configurations for different domains:
+
+# For image data (uncomment and modify as needed):
+# model:
+#   encoder_type: "cnn"
+#   encoder_dim: 256
+#   predictor_type: "mlp"
+#   predictor_hidden_dim: 512
+#   predictor_output_dim: 256
+# data:
+#   input_dim: [3, 224, 224]  # RGB images
+
+# For text data (uncomment and modify as needed):
+# model:
+#   encoder_type: "transformer"
+#   encoder_dim: 768
+#   predictor_type: "transformer"
+#   predictor_hidden_dim: 1024
+#   predictor_output_dim: 768
+# data:
+#   input_dim: 50000  # Vocabulary size
+#   sequence_length: 512
+
+# For time series data (uncomment and modify as needed):
+# model:
+#   encoder_type: "transformer"
+#   encoder_dim: 128
+#   predictor_type: "mlp"
+#   predictor_hidden_dim: 256
+#   predictor_output_dim: 128
+# data:
+#   input_dim: 32  # Number of features
+#   sequence_length: 100  # Sequence length

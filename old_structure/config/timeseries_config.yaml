@@ -1,0 +1,53 @@
+# JEPA Configuration for Time Series Analysis
+# Optimized for temporal sequence data
+
+# Model configuration
+model:
+  encoder_type: "transformer"      # Transformer for temporal modeling
+  encoder_dim: 128                 # Moderate dimension for time series
+  predictor_type: "mlp"            # MLP predictor
+  predictor_hidden_dim: 256        # Hidden dimension
+  predictor_output_dim: 128        # Output dimension
+  dropout: 0.2                     # Higher dropout for regularization
+
+# Training configuration
+training:
+  batch_size: 128                  # Larger batch for time series
+  learning_rate: 0.001             # Standard learning rate
+  weight_decay: 0.0001             # Weight decay
+  num_epochs: 200                  # More epochs for time series
+  warmup_epochs: 10                # Warmup epochs
+  gradient_clip_norm: 0.5          # Lower gradient clipping
+  save_every: 20                   # Save less frequently
+  early_stopping_patience: 30      # Higher patience for time series
+  log_interval: 200                # Log frequency
+
+# Data configuration for time series
+data:
+  train_data_path: ""              # Path to training time series
+  val_data_path: ""                # Path to validation time series
+  test_data_path: ""               # Path to test time series
+  num_workers: 4                   # Workers for data loading
+  pin_memory: true                 # Pin memory
+  sequence_length: 100             # Temporal sequence length
+  input_dim: 32                    # Number of features/sensors
+
+# Weights & Biases logging configuration
+wandb:
+  enabled: false                   # Enable wandb logging
+  project: "jepa-timeseries"       # Project name for time series tasks
+  entity: null                     # Wandb entity
+  name: null                       # Run name
+  tags: ["timeseries", "forecasting"] # Tags for time series experiments
+  notes: "JEPA for time series analysis"
+  log_model: true                  # Log model artifacts
+  log_gradients: false             # Log gradients
+  log_freq: 200                    # Less frequent logging for longer training
+  watch_model: true                # Watch model
+
+# General configuration
+device: "auto"                     # Auto-detect GPU/CPU
+seed: 42                          # Random seed
+output_dir: "./outputs"           # Output directory
+checkpoint_dir: "./checkpoints"   # Checkpoint directory
+experiment_name: "timeseries_jepa" # Experiment name
