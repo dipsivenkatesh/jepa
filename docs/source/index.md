@@ -17,7 +17,7 @@ trainer.train()
 Or use the CLI:
 
 ```bash
-python -m cli train --config config/default_config.yaml
+jepa-train --config config/default_config.yaml
 ```
 
 ## 📖 Documentation Sections
