@@ -1,0 +1,40 @@
+# Test requirements for JEPA framework
+# Install with: pip install -r test_requirements.txt
+
+# Core testing
+pytest>=6.0.0
+pytest-cov>=3.0.0
+pytest-xdist>=2.0.0
+coverage>=6.0.0
+
+# Mocking and fixtures
+pytest-mock>=3.0.0
+responses>=0.20.0
+
+# Performance and benchmarking
+pytest-benchmark>=3.4.0
+memory-profiler>=0.60.0
+
+# Test reporting
+pytest-html>=3.0.0
+pytest-json-report>=1.4.0
+
+# Code quality
+flake8>=4.0.0
+black>=22.0.0
+isort>=5.0.0
+
+# Optional dependencies for full testing
+wandb>=0.12.0
+tensorboard>=2.8.0
+torch>=1.10.0
+torchvision>=0.11.0
+numpy>=1.20.0
+pandas>=1.3.0
+Pillow>=8.0.0
+PyYAML>=6.0.0
+scikit-learn>=1.0.0
+
+# Development tools
+ipython>=7.0.0
+jupyter>=1.0.0
