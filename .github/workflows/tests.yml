@@ -7,12 +7,76 @@ on:
     branches: [ main, develop ]
 
 jobs:
+  # Check workflow control configuration
+  check-workflow-control:
+    runs-on: ubuntu-latest
+    outputs:
+      tests-enabled: ${{ steps.control.outputs.tests-enabled }}
+      global-enabled: ${{ steps.control.outputs.global-enabled }}
+      emergency-disabled: ${{ steps.control.outputs.emergency-disabled }}
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Check workflow control
+        id: control
+        run: |
+          # Read workflow control configuration
+          if [ -f .github/workflow-control.yml ]; then
+            # Install yq for YAML parsing
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+            
+            # Check global settings
+            GLOBAL_ENABLED=$(yq eval '.global.enabled' .github/workflow-control.yml)
+            TESTS_ENABLED=$(yq eval '.workflows.tests' .github/workflow-control.yml)
+            EMERGENCY_DISABLED=$(yq eval '.emergency.disable_all' .github/workflow-control.yml)
+            MAINTENANCE_MODE=$(yq eval '.emergency.maintenance_mode' .github/workflow-control.yml)
+            
+            echo "Global enabled: $GLOBAL_ENABLED"
+            echo "Tests enabled: $TESTS_ENABLED" 
+            echo "Emergency disabled: $EMERGENCY_DISABLED"
+            echo "Maintenance mode: $MAINTENANCE_MODE"
+            
+            # Set outputs
+            echo "global-enabled=$GLOBAL_ENABLED" >> $GITHUB_OUTPUT
+            echo "tests-enabled=$TESTS_ENABLED" >> $GITHUB_OUTPUT
+            echo "emergency-disabled=$EMERGENCY_DISABLED" >> $GITHUB_OUTPUT
+            
+            # Determine if workflow should run
+            if [ "$EMERGENCY_DISABLED" = "true" ] || [ "$MAINTENANCE_MODE" = "true" ]; then
+              echo "🚨 Workflows disabled due to emergency/maintenance mode"
+              echo "tests-enabled=false" >> $GITHUB_OUTPUT
+            elif [ "$GLOBAL_ENABLED" = "false" ]; then
+              echo "🔒 Workflows globally disabled"
+              echo "tests-enabled=false" >> $GITHUB_OUTPUT
+            elif [ "$TESTS_ENABLED" = "false" ]; then
+              echo "⏸️ Test workflow specifically disabled"
+              echo "tests-enabled=false" >> $GITHUB_OUTPUT
+            else
+              echo "✅ Test workflow enabled"
+              echo "tests-enabled=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "⚠️ No workflow control file found, defaulting to enabled"
+            echo "tests-enabled=true" >> $GITHUB_OUTPUT
+            echo "global-enabled=true" >> $GITHUB_OUTPUT
+            echo "emergency-disabled=false" >> $GITHUB_OUTPUT
+          fi
+
   test:
+    needs: check-workflow-control
+    if: needs.check-workflow-control.outputs.tests-enabled == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.8', '3.9', '3.10', '3.11']
+        exclude:
+          # Exclude some combinations to reduce CI load
+          - os: windows-latest
+            python-version: '3.8'
+          - os: macos-latest
+            python-version: '3.8'
         
     steps:
     - uses: actions/checkout@v3
