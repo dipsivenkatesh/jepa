@@ -1,7 +1,7 @@
 workflows:
   tests: false
   security: true
-  docs: false
+  docs: true
   performance: true
   integration: true
   release: true
