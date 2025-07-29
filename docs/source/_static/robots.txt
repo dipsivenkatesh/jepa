@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# Sitemap location (will be available once hosted)
+Sitemap: https://jepa.readthedocs.io/sitemap.xml

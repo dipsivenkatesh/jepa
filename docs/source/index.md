@@ -26,38 +26,6 @@ python -m cli train --config config/default_config.yaml
 :maxdepth: 2
 :caption: User Guide
 
-guides/installation
-guides/quickstart
-guides/configuration
-guides/training
-guides/data
-```
-
-```{toctree}
-:maxdepth: 2
-:caption: Core Concepts
-
-concepts/architecture
-concepts/self_supervised_learning
-concepts/structured_data
-```
-
-```{toctree}
-:maxdepth: 2
-:caption: API Reference
-
-api/models
-api/training
-api/data
-api/logging
-api/config
-api/cli
-```
-
-```{toctree}
-:maxdepth: 2
-:caption: User Guide
-
 guides/installation.md
 guides/quickstart.md
 guides/configuration.md
@@ -91,16 +59,6 @@ api/cli.md
 :caption: Examples
 
 examples/index.md
-```
-
-```{toctree}
-:maxdepth: 1
-:caption: Advanced Topics
-
-advanced/distributed
-advanced/optimization
-advanced/custom_architectures
-advanced/deployment
 ```
 
 ## 🎯 Key Features
