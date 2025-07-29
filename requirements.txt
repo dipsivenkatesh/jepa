@@ -1,7 +1,19 @@
-torch
-numpy
-tqdm
-transformers
-datasets
-wandb
-scikit-learn
+# Core dependencies
+torch>=1.12.0
+numpy>=1.21.0
+tqdm>=4.64.0
+
+# ML/AI libraries
+transformers>=4.20.0
+datasets>=2.0.0
+scikit-learn>=1.1.0
+
+# Logging and monitoring
+wandb>=0.13.0
+tensorboard>=2.9.0
+
+# Configuration and utilities
+pyyaml>=6.0
+
+# Visualization
+matplotlib>=3.5.0

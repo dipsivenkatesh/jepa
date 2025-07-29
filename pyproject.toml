@@ -1,10 +1,146 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "jepa"
 version = "0.1.0"
-description = "A JEPA training framework"
-authors = [ { name="Dilip Venkatesh", email="your.email@example.com" } ]
+description = "Joint-Embedding Predictive Architecture for Self-Supervised Learning"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Dilip Venkatesh", email = "your.email@example.com"}
+]
+maintainers = [
+    {name = "Dilip Venkatesh", email = "your.email@example.com"}
+]
+keywords = [
+    "self-supervised-learning",
+    "representation-learning", 
+    "deep-learning",
+    "pytorch",
+    "jepa",
+    "joint-embedding",
+    "predictive-architecture"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9", 
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 requires-python = ">=3.8"
+dependencies = [
+    "torch>=1.12.0",
+    "numpy>=1.21.0",
+    "tqdm>=4.64.0",
+    "transformers>=4.20.0",
+    "datasets>=2.0.0",
+    "wandb>=0.13.0",
+    "scikit-learn>=1.1.0",
+    "pyyaml>=6.0",
+    "tensorboard>=2.9.0",
+    "matplotlib>=3.5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=3.0.0",
+    "black>=22.0.0",
+    "isort>=5.10.0",
+    "flake8>=5.0.0",
+    "mypy>=0.950",
+    "pre-commit>=2.20.0",
+]
+docs = [
+    "sphinx>=5.0.0",
+    "sphinx-rtd-theme>=1.0.0",
+    "myst-parser>=0.18.0",
+    "sphinx-autodoc-typehints>=1.19.0",
+]
+all = [
+    "jepa[dev,docs]"
+]
+
+[project.urls]
+Homepage = "https://github.com/dipsivenkatesh/jepa"
+Documentation = "https://jepa.readthedocs.io/"
+Repository = "https://github.com/dipsivenkatesh/jepa.git"
+"Bug Tracker" = "https://github.com/dipsivenkatesh/jepa/issues"
+Changelog = "https://github.com/dipsivenkatesh/jepa/blob/main/CHANGELOG.md"
+
+[project.scripts]
+jepa-train = "jepa.cli.train:main"
+jepa-evaluate = "jepa.cli.evaluate:main"
+
+[tool.setuptools]
+packages = ["jepa", "jepa.models", "jepa.trainer", "jepa.config", "jepa.data", "jepa.loggers", "jepa.cli"]
+
+[tool.setuptools.package-data]
+jepa = [
+    "config/*.yaml",
+    "config/*.yml", 
+    "py.typed"
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers --strict-config"
+testpaths = ["tests"]
+filterwarnings = [
+    "error",
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+]
