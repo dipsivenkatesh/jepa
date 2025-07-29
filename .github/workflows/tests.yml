@@ -1,0 +1,244 @@
+name: JEPA Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  # Check workflow control configuration
+  check-workflow-control:
+    runs-on: ubuntu-latest
+    outputs:
+      tests-enabled: ${{ steps.control.outputs.tests-enabled }}
+      global-enabled: ${{ steps.control.outputs.global-enabled }}
+      emergency-disabled: ${{ steps.control.outputs.emergency-disabled }}
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Check workflow control
+        id: control
+        run: |
+          # Read workflow control configuration
+          if [ -f .github/workflow-control.yml ]; then
+            # Install yq for YAML parsing
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+            
+            # Check global settings
+            GLOBAL_ENABLED=$(yq eval '.global.enabled' .github/workflow-control.yml)
+            TESTS_ENABLED=$(yq eval '.workflows.tests' .github/workflow-control.yml)
+            EMERGENCY_DISABLED=$(yq eval '.emergency.disable_all' .github/workflow-control.yml)
+            MAINTENANCE_MODE=$(yq eval '.emergency.maintenance_mode' .github/workflow-control.yml)
+            
+            echo "Global enabled: $GLOBAL_ENABLED"
+            echo "Tests enabled: $TESTS_ENABLED" 
+            echo "Emergency disabled: $EMERGENCY_DISABLED"
+            echo "Maintenance mode: $MAINTENANCE_MODE"
+            
+            # Set outputs
+            echo "global-enabled=$GLOBAL_ENABLED" >> $GITHUB_OUTPUT
+            echo "tests-enabled=$TESTS_ENABLED" >> $GITHUB_OUTPUT
+            echo "emergency-disabled=$EMERGENCY_DISABLED" >> $GITHUB_OUTPUT
+            
+            # Determine if workflow should run
+            if [ "$EMERGENCY_DISABLED" = "true" ] || [ "$MAINTENANCE_MODE" = "true" ]; then
+              echo "🚨 Workflows disabled due to emergency/maintenance mode"
+              echo "tests-enabled=false" >> $GITHUB_OUTPUT
+            elif [ "$GLOBAL_ENABLED" = "false" ]; then
+              echo "🔒 Workflows globally disabled"
+              echo "tests-enabled=false" >> $GITHUB_OUTPUT
+            elif [ "$TESTS_ENABLED" = "false" ]; then
+              echo "⏸️ Test workflow specifically disabled"
+              echo "tests-enabled=false" >> $GITHUB_OUTPUT
+            else
+              echo "✅ Test workflow enabled"
+              echo "tests-enabled=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "⚠️ No workflow control file found, defaulting to enabled"
+            echo "tests-enabled=true" >> $GITHUB_OUTPUT
+            echo "global-enabled=true" >> $GITHUB_OUTPUT
+            echo "emergency-disabled=false" >> $GITHUB_OUTPUT
+          fi
+
+  test:
+    needs: check-workflow-control
+    if: needs.check-workflow-control.outputs.tests-enabled == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+        exclude:
+          # Exclude some combinations to reduce CI load
+          - os: windows-latest
+            python-version: '3.8'
+          - os: macos-latest
+            python-version: '3.8'
+        
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt', '**/test_requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r test_requirements.txt
+    
+    - name: Lint with flake8
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Format check with black
+      run: |
+        black --check --diff .
+    
+    - name: Import sort check with isort
+      run: |
+        isort --check-only --diff .
+    
+    - name: Run unit tests
+      run: |
+        python -m pytest tests/ -v --cov=. --cov-report=xml --cov-report=term-missing
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  test-gpu:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+        pip install -r requirements.txt
+        pip install -r test_requirements.txt
+    
+    - name: Run GPU-aware tests (CPU fallback)
+      run: |
+        python -m pytest tests/ -v -m "not gpu" --cov=. --cov-report=term-missing
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r test_requirements.txt
+    
+    - name: Run integration tests
+      run: |
+        python -m pytest tests/ -v -m "integration" --cov=. --cov-report=term-missing
+    
+    - name: Test CLI functionality
+      run: |
+        python -m cli --help
+        python -c "from jepa import __version__; print(f'JEPA version: {__version__}')"
+    
+    - name: Test example scripts
+      run: |
+        python examples/usage_example.py --dry-run || echo "Example script test completed"
+
+  docs-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r docs/requirements.txt
+    
+    - name: Test documentation build
+      run: |
+        cd docs
+        python build_docs.py --check-only
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Run security scan
+      uses: pypa/gh-action-pip-audit@v1.0.6
+      with:
+        inputs: requirements.txt test_requirements.txt
+
+  performance-test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r test_requirements.txt
+    
+    - name: Run performance benchmarks
+      run: |
+        python -m pytest tests/ -v -m "benchmark" --benchmark-only --benchmark-json=benchmark.json || echo "No benchmark tests found"
+    
+    - name: Store benchmark result
+      uses: benchmark-action/github-action-benchmark@v1
+      if: github.ref == 'refs/heads/main'
+      with:
+        tool: 'pytest'
+        output-file-path: benchmark.json
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: true

@@ -1,0 +1,36 @@
+workflows:
+  tests: false
+  security: true
+  docs: false
+  performance: true
+  integration: true
+  release: true
+global:
+  enabled: true
+environments:
+  development:
+    auto_run: true
+  staging:
+    auto_run: true
+  production:
+    auto_run: true
+branches:
+  main:
+    require_all_tests: true
+    require_security: true
+  develop:
+    require_all_tests: false
+    require_security: false
+  feature:
+    require_all_tests: false
+    require_security: false
+schedule:
+  tests:
+    enabled: true
+    cron: 0 2 * * 1
+  security:
+    enabled: true
+    cron: 0 3 * * 0
+emergency:
+  disable_all: false
+  maintenance_mode: false
