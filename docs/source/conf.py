@@ -1,33 +1,69 @@
-# Read the Docs configuration file
-# See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
+import os
+import sys
 
-version: 2
+# Add the project to the path
+sys.path.insert(0, os.path.abspath('../../'))
 
-build:
-  os: ubuntu-22.04
-  tools:
-    python: "3.11"
-  jobs:
-    pre_create_environment: []
-    post_checkout:
-      - |
-        if [ "$READTHEDOCS_VERSION_TYPE" = "external" ] && git diff --quiet origin/main HEAD -- docs/ .readthedocs.yaml;
-        then
-          echo "No changes to docs - canceling build"
-          exit 183;
-        fi
+# Mock all the heavy dependencies
+from unittest.mock import MagicMock
 
-sphinx:
-  configuration: docs/source/conf.py
-  builder: html
-  fail_on_warning: false
+class Mock(MagicMock):
+    @classmethod
+    def __getattr__(cls, name):
+        return MagicMock()
 
-python:
-  install:
-    - requirements: docs/requirements.txt
-    - method: pip
-      path: .
+# Mock modules
+MOCK_MODULES = [
+    'torch', 'torch.nn', 'torch.nn.functional', 'torch.optim', 'torch.utils', 
+    'torch.utils.data', 'torchvision', 'transformers', 'datasets', 'wandb',
+    'tensorboard', 'matplotlib', 'matplotlib.pyplot', 'numpy', 'pandas',
+    'scipy', 'sklearn', 'scikit-learn', 'tqdm', 'yaml', 'pyyaml'
+]
 
-formats:
-  - pdf
-  - epub
+for mod_name in MOCK_MODULES:
+    sys.modules[mod_name] = Mock()
+
+# Project information
+project = 'JEPA Framework'
+copyright = '2025, Dilip Venkatesh'
+author = 'Dilip Venkatesh'
+release = '0.1.0'
+
+# General configuration
+extensions = [
+    'sphinx.ext.autodoc',
+    'sphinx.ext.viewcode',
+    'sphinx.ext.napoleon',
+    'myst_parser',
+]
+
+# Add MyST support
+source_suffix = {
+    '.rst': None,
+    '.md': None,
+}
+
+myst_enable_extensions = [
+    "colon_fence",
+    "deflist",
+    "html_admonition",
+]
+
+templates_path = ['_templates']
+exclude_patterns = []
+
+# HTML output options
+html_theme = 'sphinx_rtd_theme'
+html_static_path = ['_static']
+
+# Autodoc options
+autodoc_default_options = {
+    'members': True,
+    'member-order': 'bysource',
+    'special-members': '__init__',
+    'undoc-members': True,
+    'exclude-members': '__weakref__'
+}
+
+# Don't check for broken external links during build
+linkcheck_ignore = [r'.*']
