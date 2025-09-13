@@ -128,6 +128,36 @@ from jepa import quick_start
 trainer = quick_start("config/default_config.yaml")
 ```
 
+### Action-Conditioned Variant
+
+Use `JEPAAction` when actions influence the next state. Provide a state encoder, an action encoder, and a predictor that consumes the concatenated `[z_t, a_t]` embedding.
+
+```python
+from jepa import JEPAAction
+import torch.nn as nn
+
+state_dim = 512
+action_dim = 64
+
+# Example encoders (replace with your own)
+state_encoder = nn.Sequential(
+    nn.Flatten(),
+    nn.Linear(784, state_dim),
+)
+action_encoder = nn.Sequential(
+    nn.Linear(10, 128), nn.ReLU(),
+    nn.Linear(128, action_dim),
+)
+
+# Predictor takes [state_dim + action_dim] → state_dim
+predictor = nn.Sequential(
+    nn.Linear(state_dim + action_dim, 512), nn.ReLU(),
+    nn.Linear(512, state_dim),
+)
+
+model = JEPAAction(state_encoder, action_encoder, predictor)
+```
+
 ### Command Line Interface
 
 ```bash

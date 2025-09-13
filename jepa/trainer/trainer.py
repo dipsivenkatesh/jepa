@@ -91,14 +91,26 @@ class JEPATrainer:
         total_loss = 0.0
         num_batches = 0
         
-        for batch_idx, (state_t, state_t1) in enumerate(dataloader):
+        for batch_idx, batch in enumerate(dataloader):
+            # Support datasets that return (state_t, state_t1) or (state_t, action_t, state_t1)
+            if isinstance(batch, (list, tuple)) and len(batch) == 3:
+                state_t, action_t, state_t1 = batch
+                action_t = action_t.to(self.device)
+                batch_has_action = True
+            else:
+                state_t, state_t1 = batch
+                action_t = None
+                batch_has_action = False
             # Move data to device
             state_t = state_t.to(self.device)
             state_t1 = state_t1.to(self.device)
             
             # Forward pass
             self.optimizer.zero_grad()
-            prediction, target = self.model(state_t, state_t1)
+            if batch_has_action:
+                prediction, target = self.model(state_t, action_t, state_t1)
+            else:
+                prediction, target = self.model(state_t, state_t1)
             loss = self.model.loss(prediction, target)
             
             # Backward pass
@@ -150,11 +162,23 @@ class JEPATrainer:
         num_batches = 0
         
         with torch.no_grad():
-            for state_t, state_t1 in dataloader:
+            for batch in dataloader:
+                # Support datasets that return (state_t, state_t1) or (state_t, action_t, state_t1)
+                if isinstance(batch, (list, tuple)) and len(batch) == 3:
+                    state_t, action_t, state_t1 = batch
+                    action_t = action_t.to(self.device)
+                    has_action = True
+                else:
+                    state_t, state_t1 = batch
+                    has_action = False
+
                 state_t = state_t.to(self.device)
                 state_t1 = state_t1.to(self.device)
                 
-                prediction, target = self.model(state_t, state_t1)
+                if has_action:
+                    prediction, target = self.model(state_t, action_t, state_t1)
+                else:
+                    prediction, target = self.model(state_t, state_t1)
                 loss = self.model.loss(prediction, target)
                 
                 total_loss += loss.item()
