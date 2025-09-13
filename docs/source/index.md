@@ -20,6 +20,20 @@ Or use the CLI:
 jepa-train --config config/default_config.yaml
 ```
 
+### Action-Conditioned JEPA
+
+If actions influence transitions, use `JEPAAction` to condition predictions on actions:
+
+```python
+from jepa import JEPAAction
+import torch.nn as nn
+
+state_encoder = ...  # outputs state_dim
+action_encoder = ... # outputs action_dim
+predictor = nn.Sequential(nn.Linear(state_dim + action_dim, state_dim))
+model = JEPAAction(state_encoder, action_encoder, predictor)
+```
+
 ## 📖 Documentation Sections
 
 ```{toctree}
