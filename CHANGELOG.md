@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Planned
+- GPU optimizations with Triton kernels
+- Additional pre-trained models
+- More data format support
+- Advanced visualization tools
+- Performance benchmarks
+- Docker containers
+
+## [0.1.1] - 2025-09-26
+
+### Added
+- `JEPAAction` variant with explicit action encoder support for action-conditioned prediction tasks.
+
+### Changed
+- Documentation refinements across README and Sphinx config for the action-conditioned workflow.
+- Workflow configuration updates tied to the latest documentation pipeline.
+
 ## [0.1.0] - 2025-07-29
 
 ### Added
@@ -36,13 +55,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite
 - Type-safe implementation with mypy support
 - Production-ready with proper error handling and logging
-
-## [Unreleased]
-
-### Planned
-- GPU optimizations with Triton kernels
-- Additional pre-trained models
-- More data format support
-- Advanced visualization tools
-- Performance benchmarks
-- Docker containers
