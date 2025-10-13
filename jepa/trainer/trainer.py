@@ -14,6 +14,10 @@ import os
 import logging
 
 from ..loggers import create_logger, BaseLogger
+from ..loss_functions import mse_loss
+
+
+LossFunction = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
 
 class JEPATrainer:
@@ -30,7 +34,8 @@ class JEPATrainer:
         gradient_clip_norm: Optional[float] = None,
         log_interval: int = 100,
         save_dir: str = "./checkpoints",
-        logger: Optional[BaseLogger] = None
+        logger: Optional[BaseLogger] = None,
+        loss_fn: LossFunction = mse_loss,
     ):
         """
         Initialize the JEPA trainer.
@@ -44,6 +49,7 @@ class JEPATrainer:
             log_interval: How often to log training progress
             save_dir: Directory to save checkpoints
             logger: Centralized logger instance
+            loss_fn: Callable that computes loss from prediction and target tensors
         """
         self.model = model
         self.optimizer = optimizer
@@ -52,6 +58,7 @@ class JEPATrainer:
         self.log_interval = log_interval
         self.save_dir = save_dir
         self.custom_logger = logger
+        self.loss_fn = loss_fn
         
         # Set device
         if device == "auto":
@@ -111,7 +118,7 @@ class JEPATrainer:
                 prediction, target = self.model(state_t, action_t, state_t1)
             else:
                 prediction, target = self.model(state_t, state_t1)
-            loss = self.model.loss(prediction, target)
+            loss = self.loss_fn(prediction, target)
             
             # Backward pass
             loss.backward()
@@ -179,7 +186,7 @@ class JEPATrainer:
                     prediction, target = self.model(state_t, action_t, state_t1)
                 else:
                     prediction, target = self.model(state_t, state_t1)
-                loss = self.model.loss(prediction, target)
+                loss = self.loss_fn(prediction, target)
                 
                 total_loss += loss.item()
                 num_batches += 1
@@ -344,6 +351,7 @@ def create_trainer(
     weight_decay: float = 1e-4,
     device: str = "auto",
     logger: Optional[BaseLogger] = None,
+    loss_fn: Optional[LossFunction] = None,
     **trainer_kwargs
 ) -> JEPATrainer:
     """
@@ -355,6 +363,7 @@ def create_trainer(
         weight_decay: Weight decay for optimizer
         device: Device to train on
         logger: Centralized logger instance
+        loss_fn: Optional loss function callable
         **trainer_kwargs: Additional arguments for JEPATrainer
         
     Returns:
@@ -378,5 +387,6 @@ def create_trainer(
         scheduler=scheduler,
         device=device,
         logger=logger,
+        loss_fn=loss_fn or mse_loss,
         **trainer_kwargs
     )

@@ -5,8 +5,12 @@ Evaluation utilities for JEPA models.
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Callable
 import numpy as np
+
+from ..loss_functions import mse_loss
+
+LossFunction = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
 
 
 class JEPAEvaluator:
@@ -14,15 +18,22 @@ class JEPAEvaluator:
     Evaluator for JEPA models with various metrics and analysis tools.
     """
     
-    def __init__(self, model: nn.Module, device: str = "auto"):
+    def __init__(
+        self,
+        model: nn.Module,
+        device: str = "auto",
+        loss_fn: LossFunction = mse_loss,
+    ):
         """
         Initialize evaluator.
         
         Args:
             model: JEPA model to evaluate
             device: Device to run evaluation on
+            loss_fn: Callable that computes loss from prediction and target tensors
         """
         self.model = model
+        self.loss_fn = loss_fn
         
         if device == "auto":
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -44,59 +55,61 @@ class JEPAEvaluator:
         self.model.eval()
         
         total_loss = 0.0
-        mse_losses = []
-        prediction_norms = []
-        target_norms = []
-        cosine_similarities = []
+        mse_losses: List[float] = []
+        prediction_norms: List[float] = []
+        target_norms: List[float] = []
+        cosine_similarities: List[float] = []
         
         num_samples = 0
         
         with torch.no_grad():
-            for state_t, state_t1 in dataloader:
-                state_t = state_t.to(self.device)
-                state_t1 = state_t1.to(self.device)
+            for batch in dataloader:
+                if isinstance(batch, (list, tuple)) and len(batch) == 3:
+                    state_t, action_t, state_t1 = batch
+                    state_t = state_t.to(self.device)
+                    action_t = action_t.to(self.device)
+                    state_t1 = state_t1.to(self.device)
+                    prediction, target = self.model(state_t, action_t, state_t1)
+                else:
+                    state_t, state_t1 = batch
+                    state_t = state_t.to(self.device)
+                    state_t1 = state_t1.to(self.device)
+                    prediction, target = self.model(state_t, state_t1)
+
+                loss = self.loss_fn(prediction, target)
                 
-                # Forward pass
-                prediction, target = self.model(state_t, state_t1)
-                loss = self.model.loss(prediction, target)
-                
-                # Accumulate metrics
-                batch_size = prediction.size(0)
+                batch_size = prediction.shape[0]
                 total_loss += loss.item() * batch_size
                 num_samples += batch_size
                 
-                # Per-sample MSE
                 mse_per_sample = torch.mean((prediction - target) ** 2, dim=-1)
-                mse_losses.extend(mse_per_sample.cpu().numpy())
+                mse_losses.extend(mse_per_sample.reshape(-1).cpu().numpy())
                 
-                # Norms
                 pred_norms = torch.norm(prediction, dim=-1)
-                target_norms = torch.norm(target, dim=-1)
-                prediction_norms.extend(pred_norms.cpu().numpy())
-                target_norms.extend(target_norms.cpu().numpy())
+                target_norms_tensor = torch.norm(target, dim=-1)
+                prediction_norms.extend(pred_norms.reshape(-1).cpu().numpy())
+                target_norms.extend(target_norms_tensor.reshape(-1).cpu().numpy())
                 
-                # Cosine similarity
                 cos_sim = torch.cosine_similarity(prediction, target, dim=-1)
-                cosine_similarities.extend(cos_sim.cpu().numpy())
+                cosine_similarities.extend(cos_sim.reshape(-1).cpu().numpy())
         
-        # Compute final metrics
-        avg_loss = total_loss / num_samples
-        mse_losses = np.array(mse_losses)
-        prediction_norms = np.array(prediction_norms)
-        target_norms = np.array(target_norms)
-        cosine_similarities = np.array(cosine_similarities)
+        avg_loss = total_loss / num_samples if num_samples > 0 else float('nan')
+        mse_losses_arr = np.array(mse_losses)
+        prediction_norms_arr = np.array(prediction_norms)
+        target_norms_arr = np.array(target_norms)
+        cosine_similarities_arr = np.array(cosine_similarities)
         
         metrics = {
             "loss": avg_loss,
-            "mse_mean": np.mean(mse_losses),
-            "mse_std": np.std(mse_losses),
-            "prediction_norm_mean": np.mean(prediction_norms),
-            "prediction_norm_std": np.std(prediction_norms),
-            "target_norm_mean": np.mean(target_norms),
-            "target_norm_std": np.std(target_norms),
-            "cosine_similarity_mean": np.mean(cosine_similarities),
-            "cosine_similarity_std": np.std(cosine_similarities),
-            "num_samples": num_samples
+            "mse_mean": float(np.mean(mse_losses_arr)) if mse_losses_arr.size else float('nan'),
+            "mse_std": float(np.std(mse_losses_arr)) if mse_losses_arr.size else float('nan'),
+            "prediction_norm_mean": float(np.mean(prediction_norms_arr)) if prediction_norms_arr.size else float('nan'),
+            "prediction_norm_std": float(np.std(prediction_norms_arr)) if prediction_norms_arr.size else float('nan'),
+            "target_norm_mean": float(np.mean(target_norms_arr)) if target_norms_arr.size else float('nan'),
+            "target_norm_std": float(np.std(target_norms_arr)) if target_norms_arr.size else float('nan'),
+            "cosine_similarity_mean": float(np.mean(cosine_similarities_arr)) if cosine_similarities_arr.size else float('nan'),
+            "cosine_similarity_std": float(np.std(cosine_similarities_arr)) if cosine_similarities_arr.size else float('nan'),
+            "num_samples": num_samples,
         }
         
         return metrics
@@ -198,18 +211,3 @@ class JEPAEvaluator:
         
         return np.mean(distances)
 
-
-def quick_evaluate(model: nn.Module, dataloader: DataLoader, device: str = "auto") -> Dict[str, float]:
-    """
-    Quick evaluation function for convenience.
-    
-    Args:
-        model: JEPA model to evaluate
-        dataloader: DataLoader with evaluation data
-        device: Device to run on
-        
-    Returns:
-        Dictionary with basic evaluation metrics
-    """
-    evaluator = JEPAEvaluator(model, device)
-    return evaluator.evaluate(dataloader)

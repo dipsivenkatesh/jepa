@@ -12,7 +12,7 @@ import yaml
 import json
 import numpy as np
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable
 import matplotlib.pyplot as plt
 
 # Package imports - use relative imports for proper package structure
@@ -22,6 +22,7 @@ from ..models.encoder import Encoder
 from ..models.predictor import Predictor
 from ..trainer.trainer import JEPATrainer
 from ..data.dataset import create_dataset
+from ..loss_functions import get_loss, mse_loss
 
 
 def parse_args():
@@ -153,7 +154,12 @@ def load_model_and_config(model_path: str, config_path: Optional[str] = None):
     return model, config
 
 
-def evaluate_model(model, dataloader, device):
+def evaluate_model(
+    model,
+    dataloader,
+    device,
+    loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = mse_loss,
+):
     """Evaluate model on dataset."""
     model.eval()
     model.to(device)
@@ -173,7 +179,7 @@ def evaluate_model(model, dataloader, device):
             
             # Forward pass
             prediction, target = model(state_t, state_t1)
-            loss = model.loss(prediction, target)
+            loss = loss_fn(prediction, target)
             
             # Collect results
             total_loss += loss.item() * state_t.size(0)
@@ -406,7 +412,12 @@ def main():
     
     # Evaluate model
     print("Starting evaluation...")
-    results = evaluate_model(model, test_loader, device)
+    loss_name = getattr(config.training, "loss", "mse") if hasattr(config, "training") else "mse"
+    try:
+        loss_fn = get_loss(loss_name)
+    except KeyError:
+        loss_fn = mse_loss
+    results = evaluate_model(model, test_loader, device, loss_fn=loss_fn)
     
     # Compute metrics
     print("Computing metrics...")
