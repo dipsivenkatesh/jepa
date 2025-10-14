@@ -12,6 +12,12 @@ import time
 from typing import Dict, Any, Optional, Callable
 import os
 import logging
+from collections.abc import Mapping
+
+try:  # Optional dependency for HuggingFace compatibility
+    from transformers import PreTrainedModel
+except ImportError:  # pragma: no cover - transformers is optional
+    PreTrainedModel = None  # type: ignore
 
 from ..loggers import create_logger, BaseLogger
 from ..loss_functions import mse_loss
@@ -35,7 +41,7 @@ class JEPATrainer:
         log_interval: int = 100,
         save_dir: str = "./checkpoints",
         logger: Optional[BaseLogger] = None,
-        loss_fn: LossFunction = mse_loss,
+        loss_fn: Optional[LossFunction] = None,
     ):
         """
         Initialize the JEPA trainer.
@@ -49,7 +55,7 @@ class JEPATrainer:
             log_interval: How often to log training progress
             save_dir: Directory to save checkpoints
             logger: Centralized logger instance
-            loss_fn: Callable that computes loss from prediction and target tensors
+            loss_fn: Optional callable that computes loss from prediction and target tensors
         """
         self.model = model
         self.optimizer = optimizer
@@ -58,7 +64,11 @@ class JEPATrainer:
         self.log_interval = log_interval
         self.save_dir = save_dir
         self.custom_logger = logger
-        self.loss_fn = loss_fn
+        self.is_hf_model = bool(PreTrainedModel and isinstance(model, PreTrainedModel))
+        if loss_fn is None and not self.is_hf_model:
+            self.loss_fn = mse_loss
+        else:
+            self.loss_fn = loss_fn
         
         # Set device
         if device == "auto":
@@ -83,13 +93,91 @@ class JEPATrainer:
         # Initialize logger if provided
         if self.custom_logger:
             self.custom_logger.watch_model(self.model)
-        
+
+    def _move_to_device(self, data: Any) -> Any:
+        """Recursively move supported batch structures to the configured device."""
+        if torch.is_tensor(data):
+            return data.to(self.device)
+        if hasattr(data, "to") and not isinstance(data, nn.Module):
+            try:
+                moved = data.to(self.device)
+                return moved
+            except TypeError:
+                pass  # Fall back to manual traversal when .to signature differs
+        if isinstance(data, Mapping):
+            return {k: self._move_to_device(v) for k, v in data.items()}
+        if isinstance(data, (list, tuple)):
+            return type(data)(self._move_to_device(v) for v in data)
+        return data
+
+    def _prepare_hf_batch(self, batch: Any) -> Dict[str, Any]:
+        """Normalize HuggingFace style batches into a dict of tensors on the device."""
+        prepared = self._move_to_device(batch)
+        if isinstance(prepared, Mapping):
+            return {k: v for k, v in prepared.items()}
+        raise TypeError(
+            "Expected a mapping-like structure for HuggingFace models but received "
+            f"{type(prepared)}"
+        )
+
+    def _compute_loss(self, batch: Any) -> torch.Tensor:
+        """Compute the training/validation loss for the provided batch."""
+        if self.is_hf_model:
+            model_inputs = self._prepare_hf_batch(batch)
+            outputs = self.model(**model_inputs)
+            if hasattr(outputs, "loss") and outputs.loss is not None:
+                return outputs.loss
+            if self.loss_fn is not None:
+                logits = getattr(outputs, "logits", None)
+                labels = model_inputs.get("labels")
+                if logits is None or labels is None:
+                    raise ValueError(
+                        "HuggingFace model outputs do not expose `loss`. Provide `labels` in the "
+                        "batch and/or a custom `loss_fn`."
+                    )
+                return self.loss_fn(logits, labels)
+            raise ValueError(
+                "Unable to compute loss: HuggingFace model output has no `loss` attribute and "
+                "no custom `loss_fn` was provided."
+            )
+
+        # Default JEPA-style tuple batches
+        if not isinstance(batch, (list, tuple)):
+            raise TypeError(
+                "Non-HuggingFace models expect DataLoader batches to be tuple/list structures. "
+                f"Received type {type(batch)}."
+            )
+        if len(batch) == 3:
+            state_t, action_t, state_t1 = batch
+            state_t = self._move_to_device(state_t)
+            action_t = self._move_to_device(action_t)
+            state_t1 = self._move_to_device(state_t1)
+            prediction, target = self.model(state_t, action_t, state_t1)
+        elif len(batch) == 2:
+            state_t, state_t1 = batch
+            state_t = self._move_to_device(state_t)
+            state_t1 = self._move_to_device(state_t1)
+            prediction, target = self.model(state_t, state_t1)
+        else:
+            raise ValueError(
+                "Expected batches of length 2 or 3 for JEPA models. "
+                f"Received length {len(batch)}."
+            )
+
+        if self.loss_fn is None:
+            raise ValueError(
+                "A `loss_fn` must be provided when using non-HuggingFace models."
+            )
+        return self.loss_fn(prediction, target)
+
     def train_epoch(self, dataloader: DataLoader) -> Dict[str, float]:
         """
         Train for one epoch.
         
         Args:
-            dataloader: DataLoader that yields (state_t, state_t1) pairs
+            dataloader: DataLoader that yields either JEPA tuples (state_t, state_t1)
+                or HuggingFace-style dictionaries containing model inputs (e.g. input_ids,
+                attention_mask, labels)
             
         Returns:
             Dictionary with training metrics
@@ -99,27 +187,10 @@ class JEPATrainer:
         num_batches = 0
         
         for batch_idx, batch in enumerate(dataloader):
-            # Support datasets that return (state_t, state_t1) or (state_t, action_t, state_t1)
-            if isinstance(batch, (list, tuple)) and len(batch) == 3:
-                state_t, action_t, state_t1 = batch
-                action_t = action_t.to(self.device)
-                batch_has_action = True
-            else:
-                state_t, state_t1 = batch
-                action_t = None
-                batch_has_action = False
-            # Move data to device
-            state_t = state_t.to(self.device)
-            state_t1 = state_t1.to(self.device)
-            
-            # Forward pass
             self.optimizer.zero_grad()
-            if batch_has_action:
-                prediction, target = self.model(state_t, action_t, state_t1)
-            else:
-                prediction, target = self.model(state_t, state_t1)
-            loss = self.loss_fn(prediction, target)
-            
+
+            loss = self._compute_loss(batch)
+
             # Backward pass
             loss.backward()
             
@@ -159,7 +230,8 @@ class JEPATrainer:
         Validate the model.
         
         Args:
-            dataloader: Validation DataLoader
+            dataloader: Validation DataLoader producing JEPA tuples or HuggingFace-style
+                dictionaries
             
         Returns:
             Dictionary with validation metrics
@@ -170,24 +242,7 @@ class JEPATrainer:
         
         with torch.no_grad():
             for batch in dataloader:
-                # Support datasets that return (state_t, state_t1) or (state_t, action_t, state_t1)
-                if isinstance(batch, (list, tuple)) and len(batch) == 3:
-                    state_t, action_t, state_t1 = batch
-                    action_t = action_t.to(self.device)
-                    has_action = True
-                else:
-                    state_t, state_t1 = batch
-                    has_action = False
-
-                state_t = state_t.to(self.device)
-                state_t1 = state_t1.to(self.device)
-                
-                if has_action:
-                    prediction, target = self.model(state_t, action_t, state_t1)
-                else:
-                    prediction, target = self.model(state_t, state_t1)
-                loss = self.loss_fn(prediction, target)
-                
+                loss = self._compute_loss(batch)
                 total_loss += loss.item()
                 num_batches += 1
         
@@ -387,6 +442,6 @@ def create_trainer(
         scheduler=scheduler,
         device=device,
         logger=logger,
-        loss_fn=loss_fn or mse_loss,
+        loss_fn=loss_fn,
         **trainer_kwargs
     )
