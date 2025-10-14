@@ -32,10 +32,19 @@ __email__ = "your.email@example.com"
 __description__ = "Joint-Embedding Predictive Architecture for Self-Supervised Learning"
 
 # Core model components
-from .models import JEPA, BaseModel, Encoder, Predictor
+from .models import JEPA, JEPAAction, BaseModel, Encoder, Predictor
 
 # Training framework
 from .trainer import JEPATrainer, JEPAEvaluator, create_trainer
+
+# Loss functions
+from .loss_functions import (
+    get_loss,
+    vicreg_loss,
+    vcreg_loss,
+    mse_loss,
+    LOSS_FUNCTIONS,
+)
 
 # Configuration management
 from .config import load_config, save_config, JEPAConfig
@@ -69,6 +78,7 @@ __all__ = [
     
     # Core models
     'JEPA',
+    'JEPAAction',
     'BaseModel', 
     'Encoder',
     'Predictor',
@@ -77,6 +87,13 @@ __all__ = [
     'JEPATrainer',
     'JEPAEvaluator',
     'create_trainer',
+
+    # Loss functions
+    'get_loss',
+    'vicreg_loss',
+    'vcreg_loss',
+    'mse_loss',
+    'LOSS_FUNCTIONS',
     
     # Configuration
     'load_config',
@@ -112,8 +129,28 @@ def quick_start(config_path: str):
         JEPATrainer: Configured trainer ready for training
     """
     config = load_config(config_path)
-    model = JEPA(config.model)
-    trainer = JEPATrainer(model, config)
+
+    encoder = Encoder(config.model.encoder_dim)
+    predictor = Predictor(config.model.encoder_dim)
+    model = JEPA(encoder=encoder, predictor=predictor)
+
+    loss_name = getattr(config.training, 'loss', 'mse')
+    try:
+        loss_fn = get_loss(loss_name)
+    except KeyError:
+        loss_fn = mse_loss
+
+    trainer = create_trainer(
+        model=model,
+        learning_rate=config.training.learning_rate,
+        weight_decay=config.training.weight_decay,
+        device=config.device,
+        log_interval=config.training.log_interval,
+        gradient_clip_norm=config.training.gradient_clip_norm,
+        save_dir=config.checkpoint_dir,
+        loss_fn=loss_fn,
+    )
+
     return trainer
 
 # Module-level configuration

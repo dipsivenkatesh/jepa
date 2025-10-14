@@ -8,7 +8,7 @@ This package provides a complete training framework for JEPA models including:
 """
 
 from .trainer import JEPATrainer, create_trainer
-from .eval import JEPAEvaluator, quick_evaluate
+from .eval import JEPAEvaluator
 from .utils import (
     count_parameters,
     plot_training_history,
@@ -29,7 +29,6 @@ __all__ = [
     
     # Evaluation
     'JEPAEvaluator',
-    'quick_evaluate',
     
     # Utilities
     'count_parameters',

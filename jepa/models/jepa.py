@@ -1,30 +1,22 @@
 import torch
 import torch.nn as nn
-from typing import Optional
+from typing import Tuple
+
 from .base import BaseModel
 
+
 class JEPA(BaseModel):
-    def __init__(self, encoder, predictor):
-        """
-        Initialize JEPA model with any encoder and predictor.
-        
-        Args:
-            encoder: Any encoder model (e.g., transformer, CNN, etc.)
-            predictor: Any predictor model for latent space prediction
-        """
+    def __init__(self, encoder: nn.Module, predictor: nn.Module) -> None:
+        """Initialize JEPA model with any encoder and predictor."""
         super().__init__()
         self.encoder = encoder
         self.predictor = predictor
-        self.loss_fn = nn.MSELoss()
 
-    def forward(self, state_t, state_t1):
+    def forward(self, state_t: torch.Tensor, state_t1: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         z_t = self.encoder(state_t)
         z_t1 = self.encoder(state_t1).detach()
         pred = self.predictor(z_t)
         return pred, z_t1
-
-    def loss(self, prediction, target):
-        return self.loss_fn(prediction, target)
 
 
 class JEPAAction(JEPA):
@@ -42,14 +34,16 @@ class JEPAAction(JEPA):
         state_encoder: nn.Module,
         action_encoder: nn.Module,
         predictor: nn.Module,
-        loss_fn: Optional[nn.Module] = None,
     ) -> None:
         super().__init__(encoder=state_encoder, predictor=predictor)
         self.action_encoder = action_encoder
-        if loss_fn is not None:
-            self.loss_fn = loss_fn
 
-    def forward(self, state_t: torch.Tensor, action_t: torch.Tensor, state_t1: torch.Tensor):
+    def forward(
+        self,
+        state_t: torch.Tensor,
+        action_t: torch.Tensor,
+        state_t1: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         # Encode states
         z_t = self.encoder(state_t)
         z_t1 = self.encoder(state_t1).detach()

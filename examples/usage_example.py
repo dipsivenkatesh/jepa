@@ -79,7 +79,7 @@ def example_usage():
     dummy_seq_t1 = torch.randn(seq_length, batch_size, hidden_dim)
     
     pred_transformer, target_transformer = jepa_transformer(dummy_seq_t, dummy_seq_t1)
-    loss_transformer = jepa_transformer.loss(pred_transformer, target_transformer)
+    loss_transformer = torch.nn.MSELoss()(pred_transformer, target_transformer)
     print(f"Transformer JEPA loss: {loss_transformer.item():.4f}")
     
     # For CNN (expects image data)
@@ -88,7 +88,7 @@ def example_usage():
     dummy_img_t1 = torch.randn(batch_size, channels, height, width)
     
     pred_cnn, target_cnn = jepa_cnn(dummy_img_t, dummy_img_t1)
-    loss_cnn = jepa_cnn.loss(pred_cnn, target_cnn)
+    loss_cnn = torch.nn.MSELoss()(pred_cnn, target_cnn)
     print(f"CNN JEPA loss: {loss_cnn.item():.4f}")
 
 
