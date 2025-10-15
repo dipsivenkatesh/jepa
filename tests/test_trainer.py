@@ -16,15 +16,15 @@ from unittest.mock import patch, MagicMock, call
 import logging
 
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from trainer.trainer import JEPATrainer
-from trainer.eval import JEPAEvaluator
-from trainer.utils import create_optimizer, create_scheduler, setup_training
-from models.jepa import JEPA
-from models.encoder import Encoder
-from models.predictor import Predictor
-from loggers.console_logger import ConsoleLogger
+from jepa.trainer.trainer import JEPATrainer
+from jepa.trainer.eval import JEPAEvaluator
+from jepa.trainer.utils import create_optimizer, create_scheduler, setup_training
+from jepa.models.jepa import JEPA
+from jepa.models.encoder import Encoder
+from jepa.models.predictor import Predictor
+from jepa.loggers.console_logger import ConsoleLogger
 
 
 class TestJEPATrainer(unittest.TestCase):

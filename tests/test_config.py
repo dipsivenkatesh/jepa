@@ -12,9 +12,9 @@ from dataclasses import asdict
 from unittest.mock import patch, mock_open
 
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.config import (
+from jepa.config.config import (
     ModelConfig, TrainingConfig, DataConfig, WandbConfig, 
     TensorBoardConfig, ConsoleConfig, LoggingConfig, JEPAConfig,
     load_config, save_config, create_default_config, validate_config,

@@ -9,9 +9,9 @@ import sys
 import os
 
 # Add project root to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.config import ModelConfig, TrainingConfig, DataConfig
+from jepa.config.config import ModelConfig, TrainingConfig, DataConfig
 
 
 class TestBasicConfig(unittest.TestCase):

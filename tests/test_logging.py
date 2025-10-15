@@ -14,13 +14,13 @@ import torch
 import torch.nn as nn
 
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from loggers.base_logger import BaseLogger, LoggerRegistry, LogLevel
-from loggers.console_logger import ConsoleLogger
-from loggers.tensorboard_logger import TensorBoardLogger
-from loggers.wandb_logger import WandbLogger
-from loggers.multi_logger import MultiLogger, create_logger
+from jepa.loggers.base_logger import BaseLogger, LoggerRegistry, LogLevel
+from jepa.loggers.console_logger import ConsoleLogger
+from jepa.loggers.tensorboard_logger import TensorBoardLogger
+from jepa.loggers.wandb_logger import WandbLogger
+from jepa.loggers.multi_logger import MultiLogger, create_logger
 
 
 class TestBaseLogger(unittest.TestCase):
