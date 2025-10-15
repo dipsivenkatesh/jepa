@@ -408,6 +408,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Documentation**: [Read the full documentation](https://jepa.readthedocs.io/)
 - **Discussions**: [Join community discussions](https://github.com/dipsivenkatesh/jepa/discussions)
 
+Steps to push latest version:
+rm -rf dist build *.egg-info
+python -m build
+twine upload dist/*
+
 ---
 
 <div align="center">
