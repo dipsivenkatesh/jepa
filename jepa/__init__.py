@@ -26,7 +26,7 @@ CLI Usage:
     $ python -m jepa.cli evaluate --config config/default_config.yaml
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __author__ = "Dilip Venkatesh"
 __email__ = "your.email@example.com"
 __description__ = "Joint-Embedding Predictive Architecture for Self-Supervised Learning"

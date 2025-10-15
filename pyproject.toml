@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jepa"
-version = "0.1.1"
+version = "0.1.2"
 description = "Joint-Embedding Predictive Architecture for Self-Supervised Learning"
 readme = "README.md"
 license = {text = "MIT"}
@@ -82,8 +82,9 @@ Changelog = "https://github.com/dipsivenkatesh/jepa/blob/main/CHANGELOG.md"
 jepa-train = "jepa.cli.train:main"
 jepa-evaluate = "jepa.cli.evaluate:main"
 
-[tool.setuptools]
-packages = ["jepa", "jepa.models", "jepa.trainer", "jepa.config", "jepa.data", "jepa.loggers", "jepa.cli"]
+[tool.setuptools.packages.find]
+include = ["jepa*"]
+exclude = ["tests*", "old_structure*", "examples*", "dist*", "build*"]
 
 [tool.setuptools.package-data]
 jepa = [
