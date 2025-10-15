@@ -9,10 +9,13 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import time
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, Union
 import os
+from copy import deepcopy
 import logging
 from collections.abc import Mapping
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 try:  # Progress bar support
     from tqdm.auto import tqdm
@@ -24,7 +27,7 @@ try:  # Optional dependency for HuggingFace compatibility
 except ImportError:  # pragma: no cover - transformers is optional
     PreTrainedModel = None  # type: ignore
 
-from ..loggers import create_logger, BaseLogger
+from ..loggers import create_logger, BaseLogger, WandbLogger
 from ..loss_functions import mse_loss
 
 
@@ -48,6 +51,14 @@ class JEPATrainer:
         logger: Optional[BaseLogger] = None,
         loss_fn: Optional[LossFunction] = None,
         progress_bar: bool = True,
+        distributed: bool = False,
+        local_rank: Optional[int] = None,
+        global_rank: Optional[int] = None,
+        world_size: Optional[int] = None,
+        dist_backend: str = "nccl",
+        sync_batchnorm: bool = False,
+        logger_project: Optional[str] = None,
+        logger_run_name: Optional[str] = None,
     ):
         """
         Initialize the JEPA trainer.
@@ -63,6 +74,14 @@ class JEPATrainer:
             logger: Centralized logger instance
             loss_fn: Optional callable that computes loss from prediction and target tensors
             progress_bar: Enable tqdm-based progress bars during training and validation
+            distributed: Enable torch.distributed distributed data parallel training
+            local_rank: Local process rank (per node) when using distributed training
+            global_rank: Global process rank when using distributed training
+            world_size: Total number of processes participating in training
+            dist_backend: Backend to use for distributed communication ("nccl" or "gloo")
+            sync_batchnorm: Convert BatchNorm layers to SyncBatchNorm when distributed
+            logger_project: Optional experiment project name (e.g. for Weights & Biases)
+            logger_run_name: Optional run name/alias for logger backends that support it
         """
         self.model = model
         self.optimizer = optimizer
@@ -70,25 +89,46 @@ class JEPATrainer:
         self.gradient_clip_norm = gradient_clip_norm
         self.log_interval = log_interval
         self.save_dir = save_dir
-        self.custom_logger = logger
+        self.custom_logger = self._initialize_logger(logger, logger_project, logger_run_name)
         self._progress_bar_requested = progress_bar
+        self.distributed = distributed
+        if distributed:
+            if local_rank is None:
+                env_local_rank = os.environ.get("LOCAL_RANK")
+                self.local_rank = int(env_local_rank) if env_local_rank is not None else 0
+            else:
+                self.local_rank = local_rank
+            if global_rank is None:
+                env_rank = os.environ.get("RANK")
+                self.global_rank = int(env_rank) if env_rank is not None else 0
+            else:
+                self.global_rank = global_rank
+        else:
+            self.local_rank = None
+            self.global_rank = 0
+        if distributed:
+            if world_size is not None:
+                self.world_size = world_size
+            else:
+                env_world_size = os.environ.get("WORLD_SIZE")
+                self.world_size = int(env_world_size) if env_world_size is not None else None
+        else:
+            self.world_size = 1
+        self.dist_backend = dist_backend
+        self.sync_batchnorm = sync_batchnorm
         self.is_hf_model = bool(PreTrainedModel and isinstance(model, PreTrainedModel))
         if loss_fn is None and not self.is_hf_model:
             self.loss_fn = mse_loss
         else:
             self.loss_fn = loss_fn
-        
+
         # Set device
-        if device == "auto":
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        else:
-            self.device = torch.device(device)
-        
-        self.model.to(self.device)
-        
+        self.device = self._resolve_device(device)
+        self._init_distributed_if_needed()
+
         # Create save directory
         os.makedirs(save_dir, exist_ok=True)
-        
+
         # Setup logging
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
@@ -102,8 +142,8 @@ class JEPATrainer:
         self.best_loss = float('inf')
         
         # Initialize logger if provided
-        if self.custom_logger:
-            self.custom_logger.watch_model(self.model)
+        if self.custom_logger and hasattr(self.custom_logger, "watch_model"):
+            self.custom_logger.watch_model(self._model_to_watch)
 
     def _move_to_device(self, data: Any) -> Any:
         """Recursively move supported batch structures to the configured device."""
@@ -181,6 +221,133 @@ class JEPATrainer:
             )
         return self.loss_fn(prediction, target)
 
+    @property
+    def _model_to_watch(self) -> nn.Module:
+        if isinstance(self.model, DDP):
+            return self.model.module
+        return self.model
+
+    def _initialize_logger(
+        self,
+        logger: Optional[Union[BaseLogger, Dict[str, Any], str]],
+        project: Optional[str],
+        run_name: Optional[str],
+    ) -> Optional[BaseLogger]:
+        if logger is None:
+            return None
+
+        if isinstance(logger, BaseLogger):
+            return logger
+
+        if isinstance(logger, str):
+            backend = logger.lower()
+            if backend == "wandb":
+                wandb_config: Dict[str, Any] = {"enabled": True}
+                if project:
+                    wandb_config["project"] = project
+                if run_name:
+                    wandb_config["name"] = run_name
+                return WandbLogger(wandb_config)
+            raise ValueError(f"Unsupported logger backend '{logger}'.")
+
+        if isinstance(logger, dict):
+            config = deepcopy(logger)
+
+            # Determine whether this is a composite logger config (console/wandb/tensorboard keys)
+            composite_keys = {"console", "wandb", "tensorboard"}
+            if composite_keys.intersection(config.keys()):
+                wandb_conf = config.setdefault("wandb", {})
+                if project and "project" not in wandb_conf:
+                    wandb_conf["project"] = project
+                if run_name and "name" not in wandb_conf:
+                    wandb_conf["name"] = run_name
+                return create_logger(config)
+
+            # Treat as single-backend config (assume wandb for now)
+            config.setdefault("enabled", True)
+            if project and "project" not in config:
+                config["project"] = project
+            if run_name and "name" not in config:
+                config["name"] = run_name
+            return WandbLogger(config)
+
+        raise TypeError(
+            "logger must be a BaseLogger instance, a configuration dict, or a supported backend string."
+        )
+
+    def _resolve_device(self, device: str) -> torch.device:
+        if self.distributed:
+            if device != "auto" and device is not None:
+                resolved = torch.device(device)
+            else:
+                if torch.cuda.is_available():
+                    if self.local_rank is None:
+                        raise ValueError(
+                            "`local_rank` must be provided when `distributed=True` and using CUDA."
+                        )
+                    resolved = torch.device(f"cuda:{self.local_rank}")
+                else:
+                    resolved = torch.device("cpu")
+        else:
+            if device == "auto":
+                resolved = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            else:
+                resolved = torch.device(device)
+        return resolved
+
+    def _init_distributed_if_needed(self):
+        if not self.distributed:
+            self.model.to(self.device)
+            self.world_size = 1
+            self.global_rank = 0
+            return
+
+        if not dist.is_available():
+            raise RuntimeError("torch.distributed is not available but distributed training was requested")
+
+        backend = self.dist_backend
+        if backend == "nccl" and self.device.type != "cuda":
+            backend = "gloo"
+
+        if not dist.is_initialized():
+            if self.global_rank is None or self.world_size is None:
+                raise ValueError("`global_rank` and `world_size` must be provided when initializing distributed training")
+            dist.init_process_group(backend=backend, rank=self.global_rank, world_size=self.world_size)
+        self.dist_backend = backend
+
+        if torch.cuda.is_available():
+            torch.cuda.set_device(self.device)
+
+        self.world_size = dist.get_world_size()
+        self.global_rank = dist.get_rank()
+
+        if self.sync_batchnorm:
+            self.model = nn.SyncBatchNorm.convert_sync_batchnorm(self.model)  # type: ignore[arg-type]
+
+        if hasattr(self.model, "to"):
+            self.model.to(self.device)
+
+        device_ids = [self.device.index] if self.device.type == "cuda" else None
+        self.model = DDP(self.model, device_ids=device_ids, broadcast_buffers=False, find_unused_parameters=False)
+
+    @property
+    def is_main_process(self) -> bool:
+        return (not self.distributed) or (self.global_rank == 0)
+
+    def _distributed_reduce(self, value: torch.Tensor, op=dist.ReduceOp.SUM) -> torch.Tensor:
+        if not self.distributed:
+            return value
+        value = value.clone()
+        dist.all_reduce(value, op=op)
+        if op == dist.ReduceOp.SUM:
+            value /= self.world_size
+        return value
+
+    def _set_sampler_epoch(self, dataloader: DataLoader, epoch: int):
+        sampler = getattr(dataloader, "sampler", None)
+        if sampler is not None and hasattr(sampler, "set_epoch"):
+            sampler.set_epoch(epoch)
+
     def train_epoch(self, dataloader: DataLoader) -> Dict[str, float]:
         """
         Train for one epoch.
@@ -196,11 +363,11 @@ class JEPATrainer:
         self.model.train()
         total_loss = 0.0
         num_batches = 0
-        
+
         total_batches = len(dataloader) if hasattr(dataloader, "__len__") else None
         progress_bar = None
         iterator = dataloader
-        if self.use_progress_bar:
+        if self.use_progress_bar and self.is_main_process:
             desc = f"Train Epoch {self.current_epoch + 1}"
             progress_bar = tqdm(iterator, total=total_batches, desc=desc, leave=False)
             iterator = progress_bar
@@ -219,29 +386,31 @@ class JEPATrainer:
             
             self.optimizer.step()
             
-            # Update metrics
-            total_loss += loss.item()
+            reduced_loss = self._distributed_reduce(loss.detach())
+            loss_value = reduced_loss.item()
+
+            total_loss += loss_value
             num_batches += 1
             self.global_step += 1
 
             if progress_bar is not None:
-                postfix = {"loss": f"{loss.item():.4f}"}
+                postfix = {"loss": f"{loss_value:.4f}"}
                 if self.optimizer.param_groups:
                     postfix["lr"] = f"{self.optimizer.param_groups[0]['lr']:.6f}"
                 progress_bar.set_postfix(postfix, refresh=False)
 
             # Log progress
-            if batch_idx % self.log_interval == 0:
+            if self.is_main_process and batch_idx % self.log_interval == 0:
                 log_msg = (
                     f"Epoch {self.current_epoch}, Batch {batch_idx + 1}/{total_batches if total_batches is not None else '?'}, "
-                    f"Loss: {loss.item():.6f}, LR: {self.optimizer.param_groups[0]['lr']:.6f}"
+                    f"Loss: {loss_value:.6f}, LR: {self.optimizer.param_groups[0]['lr']:.6f}"
                 )
                 self.logger.info(log_msg)
 
                 # Log to centralized logger
                 if self.custom_logger:
                     metrics = {
-                        'batch_loss': loss.item(),
+                        'batch_loss': loss_value,
                         'learning_rate': self.optimizer.param_groups[0]['lr'],
                         'epoch': self.current_epoch,
                     }
@@ -271,11 +440,11 @@ class JEPATrainer:
         self.model.eval()
         total_loss = 0.0
         num_batches = 0
-        
+
         total_batches = len(dataloader) if hasattr(dataloader, "__len__") else None
         progress_bar = None
         iterator = dataloader
-        if self.use_progress_bar:
+        if self.use_progress_bar and self.is_main_process:
             desc = f"Eval Epoch {self.current_epoch + 1}"
             progress_bar = tqdm(iterator, total=total_batches, desc=desc, leave=False)
             iterator = progress_bar
@@ -283,11 +452,13 @@ class JEPATrainer:
         with torch.no_grad():
             for batch in iterator:
                 loss = self._compute_loss(batch)
-                total_loss += loss.item()
+                reduced_loss = self._distributed_reduce(loss.detach())
+                loss_value = reduced_loss.item()
+                total_loss += loss_value
                 num_batches += 1
 
                 if progress_bar is not None:
-                    progress_bar.set_postfix({"loss": f"{loss.item():.4f}"}, refresh=False)
+                    progress_bar.set_postfix({"loss": f"{loss_value:.4f}"}, refresh=False)
 
         if progress_bar is not None:
             progress_bar.close()
@@ -322,11 +493,17 @@ class JEPATrainer:
         history = {"train_loss": [], "val_loss": []}
         epochs_without_improvement = 0
         
-        self.logger.info(f"Starting training for {num_epochs} epochs on {self.device}")
-        
+        if self.is_main_process:
+            self.logger.info(f"Starting training for {num_epochs} epochs on {self.device}")
+
         for epoch in range(num_epochs):
             self.current_epoch = epoch
             start_time = time.time()
+
+            if self.distributed:
+                self._set_sampler_epoch(train_dataloader, epoch)
+                if val_dataloader is not None:
+                    self._set_sampler_epoch(val_dataloader, epoch)
             
             # Train
             train_metrics = self.train_epoch(train_dataloader)
@@ -343,7 +520,8 @@ class JEPATrainer:
                 if val_loss < self.best_loss:
                     self.best_loss = val_loss
                     epochs_without_improvement = 0
-                    self.save_checkpoint(f"best_model.pt")
+                    if self.is_main_process:
+                        self.save_checkpoint(f"best_model.pt")
                 else:
                     epochs_without_improvement += 1
             
@@ -357,14 +535,15 @@ class JEPATrainer:
             
             # Log epoch results
             epoch_time = time.time() - start_time
-            log_msg = f"Epoch {epoch+1}/{num_epochs} completed in {epoch_time:.2f}s - "
-            log_msg += f"Train Loss: {train_metrics['train_loss']:.6f}"
-            if val_dataloader is not None:
-                log_msg += f", Val Loss: {val_metrics['val_loss']:.6f}"
-            self.logger.info(log_msg)
-            
+            if self.is_main_process:
+                log_msg = f"Epoch {epoch+1}/{num_epochs} completed in {epoch_time:.2f}s - "
+                log_msg += f"Train Loss: {train_metrics['train_loss']:.6f}"
+                if val_dataloader is not None:
+                    log_msg += f", Val Loss: {val_metrics['val_loss']:.6f}"
+                self.logger.info(log_msg)
+
             # Log to centralized logger
-            if self.custom_logger:
+            if self.custom_logger and self.is_main_process:
                 epoch_metrics = {
                     'epoch_loss': train_metrics['train_loss'],
                     'epoch': epoch + 1,
@@ -388,29 +567,33 @@ class JEPATrainer:
                     self.custom_logger.log_metrics(val_only_metrics, step=epoch + 1, prefix='val')
             
             # Save checkpoint
-            if (epoch + 1) % save_every == 0:
+            if self.is_main_process and (epoch + 1) % save_every == 0:
                 self.save_checkpoint(f"checkpoint_epoch_{epoch+1}.pt")
             
             # Early stopping
             if early_stopping_patience is not None and epochs_without_improvement >= early_stopping_patience:
-                self.logger.info(f"Early stopping triggered after {epochs_without_improvement} epochs without improvement")
+                if self.is_main_process:
+                    self.logger.info(f"Early stopping triggered after {epochs_without_improvement} epochs without improvement")
                 break
         
-        self.logger.info("Training completed!")
+        if self.is_main_process:
+            self.logger.info("Training completed!")
         
         # Finish logging session
-        if self.custom_logger:
+        if self.custom_logger and self.is_main_process:
             self.custom_logger.finish()
             
         return history
-    
+
     def save_checkpoint(self, filename: Optional[str] = None) -> str:
         """Save model checkpoint."""
         if filename is None:
             filename = f"checkpoint_epoch_{self.current_epoch + 1}.pt"
 
+        model_state = self._model_to_watch.state_dict()
+
         checkpoint = {
-            "model_state_dict": self.model.state_dict(),
+            "model_state_dict": model_state,
             "optimizer_state_dict": self.optimizer.state_dict(),
             "epoch": self.current_epoch,
             "global_step": self.global_step,
@@ -421,11 +604,12 @@ class JEPATrainer:
             checkpoint["scheduler_state_dict"] = self.scheduler.state_dict()
         
         checkpoint_path = os.path.join(self.save_dir, filename)
-        torch.save(checkpoint, checkpoint_path)
-        self.logger.info(f"Checkpoint saved: {filename}")
-        
+        if self.is_main_process:
+            torch.save(checkpoint, checkpoint_path)
+            self.logger.info(f"Checkpoint saved: {filename}")
+
         # Log checkpoint to centralized logger if it's the best model
-        if self.custom_logger and filename == "best_model.pt":
+        if self.custom_logger and filename == "best_model.pt" and self.is_main_process:
             try:
                 self.custom_logger.log_artifact(
                     checkpoint_path, 
@@ -441,7 +625,7 @@ class JEPATrainer:
         checkpoint_path = os.path.join(self.save_dir, filename)
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         
-        self.model.load_state_dict(checkpoint["model_state_dict"])
+        self._model_to_watch.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.current_epoch = checkpoint["epoch"]
         self.global_step = checkpoint["global_step"]
@@ -460,6 +644,14 @@ def create_trainer(
     device: str = "auto",
     logger: Optional[BaseLogger] = None,
     loss_fn: Optional[LossFunction] = None,
+    distributed: bool = False,
+    local_rank: Optional[int] = None,
+    global_rank: Optional[int] = None,
+    world_size: Optional[int] = None,
+    dist_backend: str = "nccl",
+    sync_batchnorm: bool = False,
+    logger_project: Optional[str] = None,
+    logger_run_name: Optional[str] = None,
     **trainer_kwargs
 ) -> JEPATrainer:
     """
@@ -496,5 +688,13 @@ def create_trainer(
         device=device,
         logger=logger,
         loss_fn=loss_fn,
+        distributed=distributed,
+        local_rank=local_rank,
+        global_rank=global_rank,
+        world_size=world_size,
+        dist_backend=dist_backend,
+        sync_batchnorm=sync_batchnorm,
+        logger_project=logger_project,
+        logger_run_name=logger_run_name,
         **trainer_kwargs
     )

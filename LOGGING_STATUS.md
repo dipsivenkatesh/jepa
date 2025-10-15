@@ -76,16 +76,16 @@ tensorboard --logdir experiments/jepa_demo/tensorboard
 pip install torch tensorboard wandb
 wandb login
 python examples/wandb_example.py  # Creates config
-python -m cli.train --config wandb_example_config.yaml
+python -m jepa.cli train --config wandb_example_config.yaml
 ```
 
 #### **Option 4: Full CLI**
 ```bash
 # Using config file
-python -m cli.train --config config/vision_config.yaml
+python -m jepa.cli train --config config/vision_config.yaml
 
 # Using command line overrides
-python -m cli.train \
+python -m jepa.cli train \
     --config config/default_config.yaml \
     --wandb \
     --wandb-project my-project \
@@ -142,7 +142,7 @@ python -m cli.train \
 
 1. **Install Dependencies**: `pip install torch tensorboard wandb`
 2. **Run Examples**: Start with `python test_logging_simple.py`
-3. **Try CLI**: `python -m cli.train --config config/vision_config.yaml`
+3. **Try CLI**: `python -m jepa.cli train --config config/vision_config.yaml`
 4. **Customize**: Edit config files or create new logger backends
 
 ### 💡 **Key Improvements Made**

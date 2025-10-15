@@ -27,27 +27,51 @@ The JEPA training loop consists of:
 ### Simple Training Script
 
 ```python
-from trainer.trainer import JEPATrainer
-from config.config import load_config
+import torch
+from torch.utils.data import DataLoader
 
-# Load configuration
-config = load_config("config/default_config.yaml")
+from jepa.models import JEPA
+from jepa.models.encoder import Encoder
+from jepa.models.predictor import Predictor
+from jepa.trainer import create_trainer
 
-# Create trainer
-trainer = JEPATrainer(config)
+encoder = Encoder(hidden_dim=256)
+predictor = Predictor(hidden_dim=256)
+model = JEPA(encoder=encoder, predictor=predictor)
 
-# Train the model
-trainer.train()
+train_dataset = ...  # yields (state_t, state_t1)
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+
+trainer = create_trainer(model, learning_rate=5e-4)
+trainer.train(train_loader, num_epochs=50)
+
+# With Weights & Biases logging
+trainer_wandb = create_trainer(
+    model,
+    learning_rate=5e-4,
+    logger="wandb",
+    logger_project="jepa-training",
+    logger_run_name="baseline",
+)
+
+# Composite logging configuration
+logger_config = {
+    "console": {"enabled": True, "level": "INFO"},
+    "wandb": {"enabled": True, "project": "jepa-training", "tags": ["demo"]},
+    "tensorboard": {"enabled": True, "log_dir": "./logs/tensorboard"},
+}
+
+trainer_multi = create_trainer(model, logger=logger_config)
 ```
 
 ### CLI Training
 
 ```bash
 # Basic training
-python -m cli train --config my_config.yaml
+jepa-train --config my_config.yaml
 
 # With specific parameters
-python -m cli train \
+python -m jepa.cli train \
   --config my_config.yaml \
   --epochs 100 \
   --batch-size 64 \
@@ -58,16 +82,22 @@ python -m cli train \
 
 ### Distributed Training
 
-```yaml
-training:
-  distributed: true
-  world_size: 4        # Number of GPUs
-  backend: "nccl"      # Communication backend
-```
-
 ```bash
 # Multi-GPU training
-torchrun --nproc_per_node=4 -m cli train --config config.yaml
+torchrun --nproc_per_node=4 python -m jepa.cli train \
+  --config config.yaml \
+  --distributed true
+```
+
+Programmatically:
+
+```python
+trainer = create_trainer(
+    model,
+    distributed=True,
+    world_size=int(os.environ["WORLD_SIZE"]),
+    local_rank=int(os.environ.get("LOCAL_RANK", 0)),
+)
 ```
 
 ### Mixed Precision Training
@@ -155,7 +185,7 @@ training:
 ### Learning Rate Finding
 
 ```python
-from trainer.utils import find_learning_rate
+from jepa.trainer.utils import find_learning_rate
 
 # Find optimal learning rate
 trainer = JEPATrainer(config)
@@ -221,7 +251,7 @@ training:
 ### Resume Training
 
 ```bash
-python -m cli train \
+python -m jepa.cli train \
   --config my_config.yaml \
   --resume checkpoints/epoch_50.pth
 ```
@@ -230,10 +260,10 @@ python -m cli train \
 
 ```python
 # Save custom checkpoint
-trainer.save_checkpoint("my_checkpoint.pth", include_optimizer=True)
+trainer.save_checkpoint("my_checkpoint.pth")
 
-# Load checkpoint
-trainer.load_checkpoint("my_checkpoint.pth", load_optimizer=True)
+# Load checkpoint (restores optimizer/scheduler automatically)
+trainer.load_checkpoint("my_checkpoint.pth")
 ```
 
 ## Data-Specific Training
@@ -313,7 +343,7 @@ torch.backends.cuda.enable_flash_sdp(True)
 
 ```python
 # Find optimal batch size
-from trainer.utils import find_optimal_batch_size
+from jepa.trainer.utils import find_optimal_batch_size
 
 optimal_batch_size = find_optimal_batch_size(
     model, 

@@ -195,7 +195,7 @@ def main():
     # Import and run the appropriate command
     if args.command == 'train':
         # Convert args to format expected by train.py
-        import cli.train as train_module
+        from . import train as train_module
         
         # Override sys.argv to pass arguments to train script
         train_args = ['train.py']
@@ -233,7 +233,7 @@ def main():
             sys.argv = original_argv
     
     elif args.command == 'evaluate':
-        import cli.evaluate as eval_module
+        from . import evaluate as eval_module
         
         # Convert args to format expected by evaluate.py
         eval_args = ['evaluate.py', '--model-path', args.model_path]

@@ -5,13 +5,23 @@ Welcome to the **JEPA (Joint-Embedding Predictive Architecture)** framework docu
 ## 🚀 Quick Start
 
 ```python
-from jepa import JEPATrainer
-from jepa.config import load_config
+import torch
+from torch.utils.data import DataLoader, TensorDataset
 
-# Load configuration and start training
-config = load_config("config/default_config.yaml")
-trainer = JEPATrainer(config)
-trainer.train()
+from jepa.models import JEPA
+from jepa.models.encoder import Encoder
+from jepa.models.predictor import Predictor
+from jepa.trainer import create_trainer
+
+dataset = TensorDataset(torch.randn(64, 16, 128), torch.randn(64, 16, 128))
+train_loader = DataLoader(dataset, batch_size=8, shuffle=True)
+
+encoder = Encoder(hidden_dim=128)
+predictor = Predictor(hidden_dim=128)
+model = JEPA(encoder=encoder, predictor=predictor)
+
+trainer = create_trainer(model)
+trainer.train(train_loader, num_epochs=1)
 ```
 
 Or use the CLI:

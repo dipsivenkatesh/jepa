@@ -41,7 +41,7 @@ Implementing a custom training loop with full control:
 Example with advanced training features:
 
 ```python
-from trainer.trainer import JEPATrainer
+from jepa.trainer import JEPATrainer
 from config.config import load_config
 from loggers.multi_logger import create_logger
 
@@ -273,7 +273,7 @@ trainer.train()
 ### Model Evaluation
 
 ```python
-from trainer.eval import JEPAEvaluator
+from jepa.trainer.eval import JEPAEvaluator
 
 # Load trained model
 evaluator = JEPAEvaluator.load_from_checkpoint(
@@ -552,7 +552,7 @@ To run any of these examples:
 
 4. **CLI examples**:
    ```bash
-   python -m cli train --config examples/configs/vision.yaml
+   python -m jepa.cli train --config examples/configs/vision.yaml
    ```
 
 ## Getting Help

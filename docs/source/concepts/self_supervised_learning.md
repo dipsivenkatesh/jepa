@@ -419,18 +419,23 @@ JEPA makes self-supervised learning accessible by:
 
 ```python
 # Simple self-supervised training with JEPA
-from jepa import JEPATrainer
-from jepa.config import SelfSupervisedConfig
+import torch
+from torch.utils.data import DataLoader
 
-config = SelfSupervisedConfig(
-    mask_strategy="block",
-    mask_ratio=0.25,
-    learning_objective="contrastive",
-    temperature=0.1
-)
+from jepa.models import JEPA
+from jepa.models.encoder import Encoder
+from jepa.models.predictor import Predictor
+from jepa.trainer import create_trainer
 
-trainer = JEPATrainer(config)
-trainer.train()  # Handles all the complexity internally
+encoder = Encoder(hidden_dim=256)
+predictor = Predictor(hidden_dim=256)
+model = JEPA(encoder=encoder, predictor=predictor)
+
+train_dataset = ...  # returns (state_t, state_t1) or dict batches
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+
+trainer = create_trainer(model, learning_rate=5e-4)
+trainer.train(train_loader, num_epochs=100)
 ```
 
 For practical implementations of these concepts, see the [Examples](../examples/index.md) section.

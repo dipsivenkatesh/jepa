@@ -112,10 +112,10 @@ def main():
     print(f"   Console Logging: {config['logging']['console']['enabled']}")
     
     print("\n🚀 To run training with centralized wandb:")
-    print(f"   python -m cli.train --config {config_path}")
+    print(f"   python -m jepa.cli train --config {config_path}")
     
     print("\n💡 Alternative CLI approach:")
-    print("   python -m cli.train \\")
+    print("   python -m jepa.cli train \\")
     print("       --config config/default_config.yaml \\")
     print("       --wandb \\")
     print("       --wandb-project jepa-experiments \\")
