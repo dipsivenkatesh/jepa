@@ -287,7 +287,7 @@ def main():
     print("   • Automatic availability checking")
     
     print("\n📚 Next steps:")
-    print("   • Try the CLI: python -m cli.train --config config/default_config.yaml")
+    print("   • Try the CLI: python -m jepa.cli train --config config/default_config.yaml")
     print("   • Modify config files to enable/disable specific loggers")
     print("   • Add your own custom logger by implementing BaseLogger")
     print("   • Check training_example.py for full training demo")

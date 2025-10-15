@@ -337,7 +337,7 @@ final_config = merge_configs(base_config, override_config)
 Override config values from command line:
 
 ```bash
-python -m cli train \
+python -m jepa.cli train \
   --config config/base.yaml \
   --learning-rate 0.01 \
   --batch-size 128 \
@@ -351,13 +351,13 @@ python -m cli train \
 Validate your configuration:
 
 ```bash
-python -m cli config --validate my_config.yaml
+python -m jepa.cli config --validate my_config.yaml
 ```
 
 ### View Current Config
 
 ```bash
-python -m cli config --show my_config.yaml
+python -m jepa.cli config --show my_config.yaml
 ```
 
 ### Create Template
@@ -365,7 +365,7 @@ python -m cli config --show my_config.yaml
 Generate a template configuration:
 
 ```bash
-python -m cli config --create-template new_config.yaml
+python -m jepa.cli config --create-template new_config.yaml
 ```
 
 ## Best Practices

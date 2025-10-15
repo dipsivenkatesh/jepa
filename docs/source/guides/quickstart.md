@@ -22,7 +22,7 @@ cd jepa
 pip install -e .
 
 # Train with defaults
-python -m cli train
+jepa-train --config config/default_config.yaml
 ```
 
 That's it! The model will train with default settings on synthetic data.
@@ -77,18 +77,38 @@ logging:
 Train using the CLI:
 
 ```bash
-python -m cli train --config my_config.yaml
+jepa-train --config my_config.yaml
 ```
 
 Or programmatically:
 
 ```python
-from trainer.trainer import JEPATrainer
-from config.config import load_config
+import torch
+from torch.utils.data import DataLoader
 
-config = load_config("my_config.yaml")
-trainer = JEPATrainer(config)
-trainer.train()
+from jepa.models import JEPA
+from jepa.models.encoder import Encoder
+from jepa.models.predictor import Predictor
+from jepa.trainer import create_trainer
+
+encoder = Encoder(hidden_dim=128)
+predictor = Predictor(hidden_dim=128)
+model = JEPA(encoder=encoder, predictor=predictor)
+
+train_dataset = ...  # returns (state_t, state_t1) tensors
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+
+trainer = create_trainer(model, learning_rate=1e-3)
+trainer.train(train_loader, num_epochs=10)
+
+# Stream metrics to Weights & Biases
+trainer_wandb = create_trainer(
+    model,
+    learning_rate=1e-3,
+    logger="wandb",
+    logger_project="jepa-quickstart",
+    logger_run_name="run-001",
+)
 ```
 
 ### Step 4: Monitor Training
@@ -108,7 +128,19 @@ tail -f logs/training.log
 Evaluate your trained model:
 
 ```bash
-python -m cli evaluate --model-path checkpoints/best_model.pth
+jepa-evaluate --model-path checkpoints/best_model.pth
+```
+
+### Step 6: Save for Inference
+
+Persist weights and reload them later (even on another machine):
+
+```python
+model.save_pretrained("artifacts/jepa-run")
+
+# Later
+restored = JEPA.from_pretrained("artifacts/jepa-run", encoder=encoder, predictor=predictor)
+restored.eval()
 ```
 
 ## Common Use Cases
@@ -118,7 +150,7 @@ python -m cli evaluate --model-path checkpoints/best_model.pth
 Train on image data:
 
 ```bash
-python -m cli train --config config/vision_config.yaml
+jepa-train --config config/vision_config.yaml
 ```
 
 ### Natural Language Processing
@@ -126,7 +158,7 @@ python -m cli train --config config/vision_config.yaml
 Train on text data:
 
 ```bash
-python -m cli train --config config/nlp_config.yaml
+jepa-train --config config/nlp_config.yaml
 ```
 
 ### Time Series Forecasting
@@ -134,7 +166,7 @@ python -m cli train --config config/nlp_config.yaml
 Train on sequential data:
 
 ```bash
-python -m cli train --config config/timeseries_config.yaml
+jepa-train --config config/timeseries_config.yaml
 ```
 
 ## Key Concepts

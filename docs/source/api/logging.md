@@ -460,34 +460,43 @@ for epoch in range(epochs):
             }, step=global_step)
 ```
 
-### Advanced Logging with Callbacks
+### Advanced Logging
+
+To integrate custom logic, subclass your logger or wrap it in your own helper and pass it to the trainer:
 
 ```python
-from jepa.trainer.callbacks import LoggingCallback
+from jepa.loggers import BaseLogger
+from jepa.trainer import create_trainer
 
-class CustomLoggingCallback(LoggingCallback):
-    def __init__(self, logger, log_frequency=10):
-        super().__init__(logger, log_frequency)
-        self.best_loss = float('inf')
-    
-    def on_batch_end(self, trainer, model, outputs, batch, batch_idx):
-        if batch_idx % self.log_frequency == 0:
-            self.logger.log_metrics({
-                'train/loss': outputs['loss'],
-                'train/lr': trainer.optimizer.param_groups[0]['lr']
-            }, step=trainer.global_step)
-    
-    def on_validation_end(self, trainer, model, metrics):
-        self.logger.log_metrics(metrics, step=trainer.global_step)
-        
-        if metrics['val_loss'] < self.best_loss:
-            self.best_loss = metrics['val_loss']
-            self.logger.log_metrics({'best_val_loss': self.best_loss})
+class AggregatingLogger(BaseLogger):
+    def __init__(self):
+        super().__init__({"enabled": True})
+        self.history = []
 
-# Use with trainer
-trainer = JEPATrainer(
-    config,
-    callbacks=[CustomLoggingCallback(logger)]
+    def log_metrics(self, metrics, step=None):
+        enriched = {"step": step, **metrics}
+        self.history.append(enriched)
+        print("LOG", enriched)
+
+    def log_hyperparameters(self, hyperparams):
+        print("HYPERPARAMS", hyperparams)
+
+    def save_artifact(self, file_path, artifact_name=None):
+        pass
+
+    def finish(self):
+        print("Finished logging", len(self.history), "records")
+
+logger = AggregatingLogger()
+trainer = create_trainer(model, logger=logger)
+trainer.train(train_loader, num_epochs=5)  # `train_loader` defined elsewhere
+
+# Or use the shortcut to enable a single backend
+wandb_trainer = create_trainer(
+    model,
+    logger="wandb",
+    logger_project="jepa-demo",
+    logger_run_name="experiment-001",
 )
 ```
 

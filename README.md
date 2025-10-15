@@ -38,7 +38,7 @@ JEPA (Joint-Embedding Predictive Architecture) is a cutting-edge self-supervised
 
 ⚡ **High Performance**
 - Mixed precision training (FP16/BF16)
-- Distributed training support (DDP, FSDP)
+- Native DistributedDataParallel (DDP) support
 - Memory-efficient implementations
 - Optimized for both research and production
 
@@ -111,22 +111,66 @@ docker run -it dipsivenkatesh/jepa:latest
 ### Python API
 
 ```python
-from jepa import JEPA, JEPATrainer, load_config
+import torch
+from torch.utils.data import DataLoader, TensorDataset
 
-# Load configuration
-config = load_config("config/default_config.yaml")
+from jepa.models import JEPA
+from jepa.models.encoder import Encoder
+from jepa.models.predictor import Predictor
+from jepa.trainer import create_trainer
 
-# Create model and trainer
-model = JEPA(config.model)
-trainer = JEPATrainer(model, config)
+# Toy dataset of (state_t, state_t1) pairs
+dataset = TensorDataset(torch.randn(256, 16, 128), torch.randn(256, 16, 128))
+train_loader = DataLoader(dataset, batch_size=8, shuffle=True)
 
-# Start training
-trainer.train()
+# Build model components
+encoder = Encoder(hidden_dim=128)
+predictor = Predictor(hidden_dim=128)
+model = JEPA(encoder=encoder, predictor=predictor)
 
-# Or use the quick start function
-from jepa import quick_start
-trainer = quick_start("config/default_config.yaml")
+# Trainer with sensible defaults
+trainer = create_trainer(model, learning_rate=3e-4, device="auto")
+
+# Train for a couple of epochs
+trainer.train(train_loader, num_epochs=2)
+
+# Optional: stream metrics to Weights & Biases
+trainer_ddp = create_trainer(
+    model,
+    learning_rate=3e-4,
+    device="auto",
+    logger="wandb",
+    logger_project="jepa-experiments",
+    logger_run_name="quickstart-run",
+)
+
+# Persist weights for downstream inference
+model.save_pretrained("artifacts/jepa-small")
+
+# Reload using the same model class
+reloaded = JEPA.from_pretrained("artifacts/jepa-small", encoder=encoder, predictor=predictor)
 ```
+
+### Distributed Training (DDP)
+
+Launch multi-GPU jobs with PyTorch's launcher:
+
+```bash
+torchrun --nproc_per_node=4 scripts/train.py --config config/default_config.yaml
+```
+
+Inside your training script, enable DDP when you create the trainer:
+
+```python
+trainer = create_trainer(
+    model,
+    distributed=True,
+    world_size=int(os.environ["WORLD_SIZE"]),
+    local_rank=int(os.environ.get("LOCAL_RANK", 0)),
+)
+```
+
+The trainer wraps the model in `DistributedDataParallel`, synchronizes losses, and restricts logging/checkpointing to rank zero automatically.
 
 ### Action-Conditioned Variant
 

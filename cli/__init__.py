@@ -14,10 +14,7 @@ Usage:
     python -m jepa.cli --help
 """
 
-from .train import main as train_main
-from .evaluate import main as evaluate_main
+from jepa.cli.train import main as train_main  # noqa: F401
+from jepa.cli.evaluate import main as evaluate_main  # noqa: F401
 
-__all__ = [
-    'train_main',
-    'evaluate_main'
-]
+__all__ = ['train_main', 'evaluate_main']

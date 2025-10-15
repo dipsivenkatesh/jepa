@@ -474,13 +474,13 @@ Override configuration values from the command line:
 
 ```bash
 # Override single values
-python -m cli train \
+python -m jepa.cli train \
   --config config/base.yaml \
   --learning-rate 0.01 \
   --batch-size 128
 
 # Override nested values
-python -m cli train \
+python -m jepa.cli train \
   --config config/base.yaml \
   --model.encoder_dim 1024 \
   --training.optimizer.type adamw
@@ -490,16 +490,16 @@ python -m cli train \
 
 ```bash
 # Generate default configuration
-python -m cli config --create-default my_config.yaml
+python -m jepa.cli config --create-default my_config.yaml
 
 # Generate configuration for specific task
-python -m cli config --create-template vision my_vision_config.yaml
+python -m jepa.cli config --create-template vision my_vision_config.yaml
 
 # Validate configuration
-python -m cli config --validate my_config.yaml
+python -m jepa.cli config --validate my_config.yaml
 
 # Show current configuration
-python -m cli config --show my_config.yaml
+python -m jepa.cli config --show my_config.yaml
 ```
 
 ## Best Practices
@@ -555,20 +555,33 @@ for config in sweep.generate():
 
 ```python
 from jepa.config import load_config
-from jepa.trainer import JEPATrainer
+from jepa.models import JEPA
+from jepa.models.encoder import Encoder
+from jepa.models.predictor import Predictor
+from jepa.trainer import create_trainer
 
-# Load configuration
 config = load_config("config/my_experiment.yaml")
 
-# Create trainer with config
-trainer = JEPATrainer(config)
-trainer.train()
+encoder = Encoder(hidden_dim=config.model.encoder_dim)
+predictor = Predictor(hidden_dim=config.model.encoder_dim)
+model = JEPA(encoder=encoder, predictor=predictor)
+
+trainer = create_trainer(
+    model,
+    learning_rate=config.training.learning_rate,
+    weight_decay=config.training.weight_decay,
+)
+trainer.train(train_loader, num_epochs=config.training.num_epochs)  # assumes `train_loader`
 ```
 
 ### Dynamic Configuration
 
 ```python
-from jepa.config import ExperimentConfig, ModelConfig
+from jepa.config import ExperimentConfig, ModelConfig, TrainingConfig
+from jepa.models import JEPA
+from jepa.models.encoder import Encoder
+from jepa.models.predictor import Predictor
+from jepa.trainer import create_trainer
 
 # Create configuration programmatically
 config = ExperimentConfig(
@@ -588,7 +601,11 @@ config.training.learning_rate = 1e-4
 config.model.encoder_layers = 12
 
 # Use configuration
-trainer = JEPATrainer(config)
+encoder = Encoder(hidden_dim=config.model.encoder_dim)
+predictor = Predictor(hidden_dim=config.model.encoder_dim)
+model = JEPA(encoder=encoder, predictor=predictor)
+
+trainer = create_trainer(model, learning_rate=config.training.learning_rate)
 ```
 
 ### Configuration Inheritance

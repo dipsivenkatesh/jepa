@@ -322,7 +322,7 @@ All structured datasets work seamlessly with the JEPA training pipeline:
 
 ```python
 from data import create_dataset, DataLoader
-from trainer import create_trainer
+from jepa.trainer import create_trainer
 from models import JEPA, Encoder, Predictor
 
 # Create dataset
