@@ -12,12 +12,12 @@ import os
 from unittest.mock import patch, MagicMock
 
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.base import BaseModel
-from models.jepa import JEPA
-from models.encoder import Encoder
-from models.predictor import Predictor
+from jepa.models.base import BaseModel
+from jepa.models.jepa import JEPA
+from jepa.models.encoder import Encoder
+from jepa.models.predictor import Predictor
 
 
 class TestBaseModel(unittest.TestCase):

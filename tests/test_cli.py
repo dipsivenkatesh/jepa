@@ -14,15 +14,15 @@ from unittest.mock import patch, MagicMock, call
 from io import StringIO
 
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from cli.train import parse_args, main as train_main, create_model_from_config
-from cli.evaluate import main as evaluate_main, parse_args as eval_parse_args
-from cli.utils import (
+from jepa.cli.train import parse_args, main as train_main, create_model_from_config
+from jepa.cli.evaluate import main as evaluate_main, parse_args as eval_parse_args
+from jepa.cli.utils import (
     setup_logging, validate_config, create_output_dir,
     add_common_args, parse_overrides, merge_args_with_config
 )
-from cli.__main__ import main as cli_main
+from jepa.cli.__main__ import main as cli_main
 
 
 class TestTrainCLI(unittest.TestCase):
@@ -82,10 +82,10 @@ class TestTrainCLI(unittest.TestCase):
         
         self.assertEqual(args.resume, '/path/to/checkpoint.pth')
     
-    @patch('cli.train.load_config')
-    @patch('cli.train.create_default_config')
-    @patch('cli.train.create_dataloader')
-    @patch('cli.train.create_trainer')
+    @patch('jepa.cli.train.load_config')
+    @patch('jepa.cli.train.create_default_config')
+    @patch('jepa.cli.train.create_dataloader')
+    @patch('jepa.cli.train.create_trainer')
     def test_train_main_with_config(self, mock_create_trainer, mock_create_dataloader,
                                    mock_create_default_config, mock_load_config):
         """Test main training function with config file."""
@@ -120,9 +120,9 @@ class TestTrainCLI(unittest.TestCase):
         mock_create_trainer.assert_called_once()
         mock_trainer.train.assert_called_once()
     
-    @patch('cli.train.create_default_config')
-    @patch('cli.train.create_dataloader')
-    @patch('cli.train.create_trainer')
+    @patch('jepa.cli.train.create_default_config')
+    @patch('jepa.cli.train.create_dataloader')
+    @patch('jepa.cli.train.create_trainer')
     def test_train_main_without_config(self, mock_create_trainer, mock_create_dataloader,
                                       mock_create_default_config):
         """Test main training function without config file."""
@@ -192,10 +192,10 @@ class TestEvaluateCLI(unittest.TestCase):
         self.assertEqual(args.batch_size, 32)
         self.assertEqual(args.output, 'results.json')
     
-    @patch('cli.evaluate.load_config')
-    @patch('cli.evaluate.load_model')
-    @patch('cli.evaluate.create_dataloader')
-    @patch('cli.evaluate.JEPAEvaluator')
+    @patch('jepa.cli.evaluate.load_config')
+    @patch('jepa.cli.evaluate.load_model')
+    @patch('jepa.cli.evaluate.create_dataloader')
+    @patch('jepa.cli.evaluate.JEPAEvaluator')
     def test_evaluate_main(self, mock_evaluator_class, mock_create_dataloader,
                           mock_load_model, mock_load_config):
         """Test main evaluation function."""
@@ -356,7 +356,7 @@ class TestCLIUtils(unittest.TestCase):
 class TestMainCLI(unittest.TestCase):
     """Test cases for main CLI entry point."""
     
-    @patch('cli.train.main')
+    @patch('jepa.cli.train.main')
     def test_cli_main_train(self, mock_train_main):
         """Test main CLI with train command."""
         test_args = ['cli', 'train', '--config', 'config.yaml']
@@ -366,7 +366,7 @@ class TestMainCLI(unittest.TestCase):
         
         mock_train_main.assert_called_once()
     
-    @patch('cli.evaluate.main')
+    @patch('jepa.cli.evaluate.main')
     def test_cli_main_evaluate(self, mock_eval_main):
         """Test main CLI with evaluate command."""
         test_args = ['cli', 'evaluate', '--model-path', 'model.pth']
@@ -405,9 +405,9 @@ class TestMainCLI(unittest.TestCase):
 class TestModelCreation(unittest.TestCase):
     """Test cases for model creation from config."""
     
-    @patch('cli.train.create_encoder')
-    @patch('cli.train.create_predictor')
-    @patch('cli.train.JEPA')
+    @patch('jepa.cli.train.create_encoder')
+    @patch('jepa.cli.train.create_predictor')
+    @patch('jepa.cli.train.JEPA')
     def test_create_model_from_config(self, mock_jepa, mock_create_predictor,
                                      mock_create_encoder):
         """Test creating model from configuration."""
@@ -476,8 +476,8 @@ class TestCLIIntegration(unittest.TestCase):
         """Clean up test fixtures."""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
-    @patch('cli.train.create_dataloader')
-    @patch('cli.train.create_trainer')
+    @patch('jepa.cli.train.create_dataloader')
+    @patch('jepa.cli.train.create_trainer')
     def test_full_train_workflow(self, mock_create_trainer, mock_create_dataloader):
         """Test complete training workflow through CLI."""
         # Setup mocks

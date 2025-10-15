@@ -14,6 +14,11 @@ import os
 import logging
 from collections.abc import Mapping
 
+try:  # Progress bar support
+    from tqdm.auto import tqdm
+except ImportError:  # pragma: no cover - tqdm is optional at runtime
+    tqdm = None  # type: ignore
+
 try:  # Optional dependency for HuggingFace compatibility
     from transformers import PreTrainedModel
 except ImportError:  # pragma: no cover - transformers is optional
@@ -42,6 +47,7 @@ class JEPATrainer:
         save_dir: str = "./checkpoints",
         logger: Optional[BaseLogger] = None,
         loss_fn: Optional[LossFunction] = None,
+        progress_bar: bool = True,
     ):
         """
         Initialize the JEPA trainer.
@@ -56,6 +62,7 @@ class JEPATrainer:
             save_dir: Directory to save checkpoints
             logger: Centralized logger instance
             loss_fn: Optional callable that computes loss from prediction and target tensors
+            progress_bar: Enable tqdm-based progress bars during training and validation
         """
         self.model = model
         self.optimizer = optimizer
@@ -64,6 +71,7 @@ class JEPATrainer:
         self.log_interval = log_interval
         self.save_dir = save_dir
         self.custom_logger = logger
+        self._progress_bar_requested = progress_bar
         self.is_hf_model = bool(PreTrainedModel and isinstance(model, PreTrainedModel))
         if loss_fn is None and not self.is_hf_model:
             self.loss_fn = mse_loss
@@ -84,7 +92,10 @@ class JEPATrainer:
         # Setup logging
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
-        
+        self.use_progress_bar = bool(self._progress_bar_requested and tqdm is not None)
+        if self._progress_bar_requested and tqdm is None:
+            self.logger.warning("tqdm is not available; disabling progress bars.")
+
         # Training state
         self.current_epoch = 0
         self.global_step = 0
@@ -186,7 +197,15 @@ class JEPATrainer:
         total_loss = 0.0
         num_batches = 0
         
-        for batch_idx, batch in enumerate(dataloader):
+        total_batches = len(dataloader) if hasattr(dataloader, "__len__") else None
+        progress_bar = None
+        iterator = dataloader
+        if self.use_progress_bar:
+            desc = f"Train Epoch {self.current_epoch + 1}"
+            progress_bar = tqdm(iterator, total=total_batches, desc=desc, leave=False)
+            iterator = progress_bar
+
+        for batch_idx, batch in enumerate(iterator):
             self.optimizer.zero_grad()
 
             loss = self._compute_loss(batch)
@@ -204,15 +223,21 @@ class JEPATrainer:
             total_loss += loss.item()
             num_batches += 1
             self.global_step += 1
-            
+
+            if progress_bar is not None:
+                postfix = {"loss": f"{loss.item():.4f}"}
+                if self.optimizer.param_groups:
+                    postfix["lr"] = f"{self.optimizer.param_groups[0]['lr']:.6f}"
+                progress_bar.set_postfix(postfix, refresh=False)
+
             # Log progress
             if batch_idx % self.log_interval == 0:
                 log_msg = (
-                    f"Epoch {self.current_epoch}, Batch {batch_idx}/{len(dataloader)}, "
+                    f"Epoch {self.current_epoch}, Batch {batch_idx + 1}/{total_batches if total_batches is not None else '?'}, "
                     f"Loss: {loss.item():.6f}, LR: {self.optimizer.param_groups[0]['lr']:.6f}"
                 )
                 self.logger.info(log_msg)
-                
+
                 # Log to centralized logger
                 if self.custom_logger:
                     metrics = {
@@ -221,9 +246,16 @@ class JEPATrainer:
                         'epoch': self.current_epoch,
                     }
                     self.custom_logger.log_metrics(metrics, step=self.global_step, prefix='train')
-        
-        avg_loss = total_loss / num_batches
-        return {"train_loss": avg_loss}
+
+        if progress_bar is not None:
+            progress_bar.close()
+
+        avg_loss = total_loss / num_batches if num_batches else float('nan')
+        return {
+            "train_loss": avg_loss,
+            "loss": avg_loss,
+            "num_batches": num_batches,
+        }
     
     def validate(self, dataloader: DataLoader) -> Dict[str, float]:
         """
@@ -240,14 +272,31 @@ class JEPATrainer:
         total_loss = 0.0
         num_batches = 0
         
+        total_batches = len(dataloader) if hasattr(dataloader, "__len__") else None
+        progress_bar = None
+        iterator = dataloader
+        if self.use_progress_bar:
+            desc = f"Eval Epoch {self.current_epoch + 1}"
+            progress_bar = tqdm(iterator, total=total_batches, desc=desc, leave=False)
+            iterator = progress_bar
+
         with torch.no_grad():
-            for batch in dataloader:
+            for batch in iterator:
                 loss = self._compute_loss(batch)
                 total_loss += loss.item()
                 num_batches += 1
-        
-        avg_loss = total_loss / num_batches
-        return {"val_loss": avg_loss}
+
+                if progress_bar is not None:
+                    progress_bar.set_postfix({"loss": f"{loss.item():.4f}"}, refresh=False)
+
+        if progress_bar is not None:
+            progress_bar.close()
+
+        avg_loss = total_loss / num_batches if num_batches else float('nan')
+        return {
+            "val_loss": avg_loss,
+            "val_num_batches": num_batches,
+        }
     
     def train(
         self,
@@ -355,8 +404,11 @@ class JEPATrainer:
             
         return history
     
-    def save_checkpoint(self, filename: str):
+    def save_checkpoint(self, filename: Optional[str] = None) -> str:
         """Save model checkpoint."""
+        if filename is None:
+            filename = f"checkpoint_epoch_{self.current_epoch + 1}.pt"
+
         checkpoint = {
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
@@ -382,6 +434,7 @@ class JEPATrainer:
                 )
             except Exception as e:
                 self.logger.warning(f"Failed to log model artifact: {e}")
+        return checkpoint_path
     
     def load_checkpoint(self, filename: str):
         """Load model checkpoint."""

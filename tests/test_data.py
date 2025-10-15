@@ -17,14 +17,14 @@ from unittest.mock import patch, MagicMock, mock_open
 import pandas as pd
 
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data.dataset import (
+from jepa.data.dataset import (
     JEPADataset, ImageSequenceDataset, CSVDataset, JSONDataset, 
     PickleDataset, StructuredDataset, get_dataset
 )
-from data.transforms import BaseTransform, ImageMaskingTransform, NormalizationTransform
-from data.utils import create_dataloader, validate_data_format, create_temporal_pairs
+from jepa.data.transforms import BaseTransform, ImageMaskingTransform, NormalizationTransform
+from jepa.data.utils import create_dataloader, validate_data_format, create_temporal_pairs
 
 
 class TestJEPADataset(unittest.TestCase):
