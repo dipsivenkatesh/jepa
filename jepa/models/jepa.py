@@ -120,150 +120,168 @@ class JEPAAction(JEPA):
         pred = self.predictor(fused)
         return pred, z_t1
 
-class JEPAInterleavedTemporal(JEPA):
+class JEPAInterleaved(JEPA):
     """
-    Interleaved (z, u) temporal JEPA that reuses JEPA's normalization & pooling.
+    JEPA variant for interleaved (state, action, state, action, ...) prefixes.
 
-    Expects:
-      - encoder: per-step state encoder (same as JEPA.encoder)
-      - predictor: temporal causal module mapping (B, L, D) -> (B, L, D)
-      - action_embedder: optional, maps (B, T) -> (B, T, D_a)
+    This class:
+      - Encodes each *state* event with `state_encoder` (shared with base JEPA).
+      - Encodes each *action* event with `action_encoder`.
+      - Normalizes both into a shared model space and interleaves them along time.
+      - Feeds the (B, E, D) sequence into `predictor`, which should output a single
+        next-state embedding prediction per example (B, D) for the *next* state
+        specified by `labels`.
+
+    Expected `forward` inputs (aligned with your collate function):
+      inputs:           LongTensor (B, E_max, S_max)
+      inputs_attention: BoolTensor (B, E_max, S_max)
+      event_type:       LongTensor (B, E_max)  with 0 = state, 1 = action
+      labels:           LongTensor (B, N_max)
+      labels_attention: BoolTensor (B, N_max)
+
+    The `predictor` you provide should accept at least:
+        predictor(seq_emb: Tensor) -> Tensor
+    and may optionally accept keyword arguments:
+        event_type=..., event_mask=...
+    If provided, they will be forwarded.
     """
 
     def __init__(
         self,
-        encoder: nn.Module,
+        state_encoder: nn.Module,
+        action_encoder: nn.Module,
         predictor: nn.Module,
-        action_embedder: Optional[nn.Module] = None,
-        d_model: Optional[int] = None,
-        use_type_embeddings: bool = True,
     ) -> None:
-        super().__init__(encoder=encoder, predictor=predictor)
-        self.action_embedder = action_embedder
-        self._is_hf_action = self._is_hf_module(action_embedder) if action_embedder else False
+        super().__init__(encoder=state_encoder, predictor=predictor)
+        self.action_encoder = action_encoder
+        self._is_hf_action_encoder = self._is_hf_module(action_encoder)
 
-        self.d_model = d_model  # may be None; we’ll infer lazily
-        self._enc_proj: Optional[nn.Linear] = None
-        self._act_proj: Optional[nn.Linear] = None
+    # ---------- helpers ----------
 
-        self.use_type_embeddings = use_type_embeddings
-        self.state_type: Optional[nn.Parameter] = None
-        self.action_type: Optional[nn.Parameter] = None
-
-        self.pred_head: Optional[nn.Linear] = None
-
-    # ---- utilities ----
-
-    def _maybe_init_dims(self, z_like: torch.Tensor) -> None:
-        if self.d_model is None:
-            self.d_model = int(z_like.shape[-1])
-        if self.pred_head is None:
-            self.pred_head = nn.Linear(self.d_model, self.d_model)
-        if self.use_type_embeddings and self.state_type is None:
-            self.state_type = nn.Parameter(torch.zeros(1, 1, self.d_model))
-            self.action_type = nn.Parameter(torch.zeros(1, 1, self.d_model))
-
-    def _ensure_proj(self, in_dim: int, kind: str) -> Optional[nn.Linear]:
-        if self.d_model is None or in_dim == self.d_model:
-            return None
-        proj = nn.Linear(in_dim, self.d_model)
-        if kind == "enc":
-            self._enc_proj = proj
-        else:
-            self._act_proj = proj
-        return proj
-
-    def _encode_steps(self, input_ids: torch.Tensor, attention: torch.Tensor) -> torch.Tensor:
-        """Encode a batch of T steps: (B,T,S)->(B,T,D). Reuses JEPA’s normalization & pooling."""
-        B, T, S = input_ids.shape
-        flat_ids = input_ids.reshape(B * T, S)
-        flat_att = attention.reshape(B * T, S)
-
-        out = self.encoder(input_ids=flat_ids, attention_mask=flat_att)
-        feats = self._normalize_encoder_output(out)  # (B*T,S,D?) or (B*T,D?)
-        # Pool/flatten with JEPA logic:
-        z_flat = self._prepare_representation(feats, self._is_hf_encoder)  # (B*T,D_enc)
-
-        self._maybe_init_dims(z_flat)
-        if self._enc_proj is None:
-            self._ensure_proj(z_flat.shape[-1], "enc")
-        if self._enc_proj is not None:
-            z_flat = self._enc_proj(z_flat)
-        return z_flat.view(B, T, self.d_model)  # (B,T,D)
-
-    def _encode_next(
+    def _encode_state_events(
         self,
-        next_ids: torch.Tensor,          # (B,S_next) or (B,T,S_next)
-        next_att: torch.Tensor,          # same shape
-        T: int,
+        tokens: torch.Tensor,           # (Ns, S_max)
+        attention: torch.Tensor,        # (Ns, S_max)
     ) -> torch.Tensor:
-        if next_ids.ndim == 2:
-            next_ids = next_ids.unsqueeze(1).expand(-1, T, -1)
-            next_att = next_att.unsqueeze(1).expand(-1, T, -1)
-        z_next = self._encode_steps(next_ids, next_att)  # (B,T,D)
-        return z_next.detach()
+        """
+        Encode a packed set of STATE events with the state encoder.
+        Returns pooled embeddings (Ns, D).
+        """
+        if tokens.numel() == 0:
+            # no state rows in this batch slice
+            return tokens.new_zeros((0, self._infer_embed_dim()))
+        z = self._encode_state(input_ids=tokens, attention_mask=attention)  # (Ns, D)
+        if z.ndim > 2:
+            # ensure pooled representation per event
+            z = self._prepare_representation(z, self._is_hf_encoder)
+        return z
 
-    def _interleave(self, z: torch.Tensor, u: Optional[torch.Tensor]) -> torch.Tensor:
-        """[z0,u0,z1,u1,...] if u provided, else [z0,z1,...]."""
-        if u is None:
-            return z
-        B, T, D = z.shape
-        seq = torch.empty(B, 2 * T, D, device=z.device, dtype=z.dtype)
-        seq[:, 0::2, :] = z
-        seq[:, 1::2, :] = u
-        return seq
+    def _encode_action_events(
+        self,
+        tokens: torch.Tensor,           # (Na, S_max)
+        attention: torch.Tensor,        # (Na, S_max)
+    ) -> torch.Tensor:
+        """
+        Encode a packed set of ACTION events with the action encoder.
+        Returns pooled embeddings (Na, D).
+        """
+        if tokens.numel() == 0:
+            return tokens.new_zeros((0, self._infer_embed_dim()))
 
-    # ---- forward ----
+        # Try named args first (HF-style); fallback to positional if needed
+        try:
+            out = self.action_encoder(input_ids=tokens, attention_mask=attention)
+        except TypeError:
+            out = self.action_encoder(tokens, attention)
+
+        a = self._normalize_encoder_output(out)
+        a = self._prepare_representation(a, self._is_hf_action_encoder)
+        return a
+
+    def _infer_embed_dim(self) -> int:
+        """
+        Best-effort inference of embedding dim from encoders or predictor.
+        Used only for zero-size allocations in corner cases.
+        """
+        # Try state encoder hidden size
+        if hasattr(self.encoder, "config") and hasattr(self.encoder.config, "n_embd"):
+            return int(self.encoder.config.n_embd)
+        if hasattr(self.encoder, "config") and hasattr(self.encoder.config, "hidden_size"):
+            return int(self.encoder.config.hidden_size)
+        # Try a projection on predictor
+        if hasattr(self.predictor, "out") and isinstance(self.predictor.out, nn.Linear):
+            return int(self.predictor.out.out_features)
+        if hasattr(self.predictor, "proj") and isinstance(self.predictor.proj, nn.Linear):
+            return int(self.predictor.proj.out_features)
+        # Fallback
+        return 768
+
+    # ---------- main forward ----------
 
     def forward(
         self,
-        history_input_ids: torch.Tensor,    # (B,T,S)
-        history_attention: torch.Tensor,    # (B,T,S)
-        next_input_ids: torch.Tensor,       # (B,S_next) or (B,T,S_next)
-        next_attention: torch.Tensor,       # same
-        action_ids: Optional[torch.Tensor] = None,  # (B,T)
+        inputs: torch.Tensor,                  # (B, E_max, S_max)
+        inputs_attention: torch.Tensor,        # (B, E_max, S_max) bool
+        event_type: torch.Tensor,              # (B, E_max) 0=state, 1=action
+        labels: torch.Tensor,                  # (B, N_max)
+        labels_attention: torch.Tensor,        # (B, N_max) bool
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        B, T, _ = history_input_ids.shape
+        """
+        Returns:
+          pred:    (B, D)    predicted next-state embedding from the prefix
+          z_next:  (B, D)    ground-truth next-state embedding (encoded from labels)
+        """
+        B, E, S = inputs.shape
 
-        # encode states (each step is state⊕action tokens from your dataloader)
-        z_hist = self._encode_steps(history_input_ids, history_attention)  # (B,T,D)
+        # Flatten events: (B*E, S)
+        flat_tokens = inputs.view(B * E, S)
+        flat_attn   = inputs_attention.view(B * E, S)
+        flat_types  = event_type.view(B * E)
 
-        # optional separate action token stream
-        u = None
-        if self.action_embedder is not None and action_ids is not None:
-            u_raw = self.action_embedder(action_ids)  # expect (B,T,D_a)
-            if not torch.is_tensor(u_raw):
-                u_raw = self._normalize_encoder_output(u_raw)
-            if u_raw.ndim != 3:
-                raise ValueError("action_embedder must return (B,T,D_a)")
-            self._maybe_init_dims(z_hist.reshape(B * T, -1))
-            if self._act_proj is None:
-                self._ensure_proj(u_raw.shape[-1], "act")
-            u = self._act_proj(u_raw) if self._act_proj is not None else u_raw  # (B,T,D)
+        # Build selectors
+        is_state  = flat_types == 0
+        is_action = flat_types == 1
 
-        # interleave and add type embeddings (optional)
-        seq = self._interleave(z_hist, u)  # (B,L,D), L=T or 2T
-        if self.use_type_embeddings and self.state_type is not None:
-            if u is None:
-                seq = seq + self.state_type
-            else:
-                seq = seq + torch.where(
-                    (torch.arange(seq.size(1), device=seq.device) % 2 == 0).view(1, -1, 1),
-                    self.state_type, self.action_type
-                )
+        # Encode STATE events → z
+        z_flat = self._encode_state_events(
+            tokens=flat_tokens[is_state],
+            attention=flat_attn[is_state],
+        )  # (Ns, D)
 
-        # temporal predictor returns per-position hidden states
-        h = self.predictor(seq)  # (B,L,D)
+        # Encode ACTION events → u
+        u_flat = self._encode_action_events(
+            tokens=flat_tokens[is_action],
+            attention=flat_attn[is_action],
+        )  # (Na, D)
 
-        # gather hidden states at state positions
-        h_states = h if u is None else h[:, 0::2, :]  # (B,T,D)
+        # Allocate full (B*E, D) and scatter back
+        D = z_flat.size(-1) if z_flat.numel() else (u_flat.size(-1) if u_flat.numel() else self._infer_embed_dim())
+        seq_flat = flat_tokens.new_zeros((B * E, D), dtype=torch.float32)
 
-        # predict z_{t+1} from h_t
-        if self.pred_head is None:
-            self._maybe_init_dims(h_states.reshape(B * T, -1))
-        z_pred_next = self.pred_head(h_states)  # (B,T,D)
+        if z_flat.numel():
+            seq_flat[is_state] = z_flat
+        if u_flat.numel():
+            seq_flat[is_action] = u_flat
 
-        # encode targets for s_{t+1}
-        z_target_next = self._encode_next(next_input_ids, next_attention, T)  # (B,T,D)
+        # Reshape to (B, E, D)
+        seq_emb = seq_flat.view(B, E, D)
 
-        return z_pred_next, z_target_next
+        # Event mask: True if the event row has at least 1 valid token
+        event_mask = (inputs_attention.any(dim=-1))  # (B, E) bool
+
+        # ---- Predictor: consume sequence and output next-state embedding prediction ----
+        # We forward optional hints if the predictor accepts them.
+        try:
+            pred = self.predictor(seq_emb, event_type=event_type, event_mask=event_mask)  # (B, D)
+        except TypeError:
+            pred = self.predictor(seq_emb)  # (B, D)
+
+        # ---- Encode ground-truth next state from labels ----
+        z_next = self._encode_state(input_ids=labels, attention_mask=labels_attention)  # (B, D) or (B, *, D)
+        if z_next.ndim > 2:
+            z_next = self._prepare_representation(z_next, self._is_hf_encoder)  # (B, D)
+
+        # Detach targets (JEPA-style)
+        z_next = z_next.detach()
+
+        return pred, z_next
