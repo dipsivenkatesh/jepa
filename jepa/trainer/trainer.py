@@ -173,59 +173,126 @@ class JEPATrainer:
 
     def _compute_loss(self, batch: Any) -> torch.Tensor:
         """Compute the training/validation loss for the provided batch."""
+
+        # ------------- HuggingFace models -------------
         if self.is_hf_model:
             model_inputs = self._prepare_hf_batch(batch)
             outputs = self.model(**model_inputs)
+
+            # Prefer model-provided loss if present
             if hasattr(outputs, "loss") and outputs.loss is not None:
                 return outputs.loss
+
+            # Otherwise require loss_fn with logits/labels
             if self.loss_fn is not None:
                 logits = getattr(outputs, "logits", None)
                 labels = model_inputs.get("labels")
                 if logits is None or labels is None:
                     raise ValueError(
-                        "HuggingFace model outputs do not expose `loss`. Provide `labels` in the "
-                        "batch and/or a custom `loss_fn`."
+                        "HF model outputs have no `loss`. Provide `labels` in the batch and/or a custom `loss_fn`."
                     )
                 return self.loss_fn(logits, labels)
+
             raise ValueError(
-                "Unable to compute loss: HuggingFace model output has no `loss` attribute and "
-                "no custom `loss_fn` was provided."
+                "Unable to compute loss: HF model output has no `loss` and no custom `loss_fn` was provided."
             )
 
-        # Default JEPA-style tuple batches
-        if not isinstance(batch, (list, tuple)):
+        # ------------- Non-HF JEPA-style models -------------
+        # Case A: Your new dataloader returns a dict of tensors (recommended path)
+        if isinstance(batch, Mapping):
+            batch = self._move_to_device(batch)
+
+            # Allow model(batch) or model.forward_batch(batch)
+            if hasattr(self.model, "forward_batch"):
+                outputs = self.model.forward_batch(batch)  # type: ignore[attr-defined]
+            else:
+                outputs = self.model(batch)
+
+            # Accept multiple return conventions:
+            # - dict with 'loss'
+            # - dict with 'prediction' & 'target'
+            # - tuple (prediction, target)
+            if isinstance(outputs, Mapping):
+                if "loss" in outputs and outputs["loss"] is not None:
+                    return outputs["loss"]
+                if "prediction" in outputs and "target" in outputs:
+                    if self.loss_fn is None:
+                        raise ValueError("Provide `loss_fn` to compute loss from prediction/target.")
+                    return self.loss_fn(outputs["prediction"], outputs["target"])
+                raise ValueError(
+                    "Model(batch) returned a dict without 'loss' or ('prediction' & 'target')."
+                )
+
+            if isinstance(outputs, (tuple, list)) and len(outputs) == 2:
+                prediction, target = outputs
+                if self.loss_fn is None:
+                    raise ValueError("Provide `loss_fn` to compute loss from prediction/target.")
+                return self.loss_fn(prediction, target)
+
             raise TypeError(
-                "Non-HuggingFace models expect DataLoader batches to be tuple/list structures. "
-                f"Received type {type(batch)}."
-            )
-        if len(batch) == 3:
-            state_t, action_t, state_t1 = batch
-            state_t = self._move_to_device(state_t)
-            action_t = self._move_to_device(action_t)
-            state_t1 = self._move_to_device(state_t1)
-            prediction, target = self.model(state_t, action_t, state_t1)
-        elif len(batch) == 2:
-            state_t, state_t1 = batch
-            state_t = self._move_to_device(state_t)
-            state_t1 = self._move_to_device(state_t1)
-            prediction, target = self.model(state_t, state_t1)
-        else:
-            raise ValueError(
-                "Expected batches of length 2 or 3 for JEPA models. "
-                f"Received length {len(batch)}."
+                "Model(batch) must return a dict with 'loss' or ('prediction','target'), "
+                "or a tuple (prediction, target)."
             )
 
-        if self.loss_fn is None:
-            raise ValueError(
-                "A `loss_fn` must be provided when using non-HuggingFace models."
+        # Case B: Older tuple-style batches (state_t, [action_t], state_t1)
+        if isinstance(batch, (list, tuple)):
+            if len(batch) == 3:
+                state_t, action_t, state_t1 = batch
+                state_t  = self._move_to_device(state_t)
+                action_t = self._move_to_device(action_t)
+                state_t1 = self._move_to_device(state_t1)
+                outputs = self.model(state_t, action_t, state_t1)
+            elif len(batch) == 2:
+                state_t, state_t1 = batch
+                state_t  = self._move_to_device(state_t)
+                state_t1 = self._move_to_device(state_t1)
+                outputs = self.model(state_t, state_t1)
+            else:
+                raise ValueError(f"Expected batches of length 2 or 3, got {len(batch)}.")
+
+            if isinstance(outputs, Mapping) and "loss" in outputs and outputs["loss"] is not None:
+                return outputs["loss"]
+
+            if isinstance(outputs, (tuple, list)) and len(outputs) == 2:
+                prediction, target = outputs
+                if self.loss_fn is None:
+                    raise ValueError("Provide `loss_fn` to compute loss from prediction/target.")
+                return self.loss_fn(prediction, target)
+
+            raise TypeError(
+                "Model returned unsupported type; expected dict with 'loss' or (prediction, target) tuple."
             )
-        return self.loss_fn(prediction, target)
+
+        raise TypeError(
+            f"Unsupported batch type {type(batch)}. Pass a dict (preferred) or a 2/3-tuple."
+        )
 
     @property
     def _model_to_watch(self) -> nn.Module:
         if isinstance(self.model, DDP):
             return self.model.module
         return self.model
+    
+    def _log(self, metrics: Dict[str, Any], *, step: int, prefix: Optional[str] = None):
+        """Robust logger: tries multiple method names across logger backends."""
+        if not self.custom_logger:
+            return
+        payload = metrics if prefix is None else {f"{prefix}/{k}": v for k, v in metrics.items()}
+        # Try common method names in order
+        for method_name in ("log_metrics", "log", "log_dict", "write"):
+            fn = getattr(self.custom_logger, method_name, None)
+            if callable(fn):
+                try:
+                    # Some backends accept step as kw, others as part of payload
+                    fn(payload, step=step)
+                except TypeError:
+                    # Fallback: inject step into payload if signature doesn't accept kw
+                    payload_with_step = dict(payload)
+                    payload_with_step["step"] = step
+                    fn(payload_with_step)
+                return
+        # Last resort: do nothing silently if no method matches
+
 
     def _initialize_logger(
         self,
@@ -414,7 +481,7 @@ class JEPATrainer:
                         'learning_rate': self.optimizer.param_groups[0]['lr'],
                         'epoch': self.current_epoch,
                     }
-                    self.custom_logger.log_metrics(metrics, step=self.global_step, prefix='train')
+                    self._log(metrics, step=self.global_step, prefix='train')
 
         if progress_bar is not None:
             progress_bar.close()
@@ -558,13 +625,13 @@ class JEPATrainer:
                 if self.scheduler is not None:
                     epoch_metrics['learning_rate'] = self.optimizer.param_groups[0]['lr']
                 
-                self.custom_logger.log_metrics(epoch_metrics, step=epoch + 1, prefix='train')
+                self._log(epoch_metrics, step=epoch + 1, prefix='train')
                 if val_dataloader is not None:
                     val_only_metrics = {
                         'epoch_loss': val_metrics['val_loss'],
                         'best_loss': self.best_loss,
                     }
-                    self.custom_logger.log_metrics(val_only_metrics, step=epoch + 1, prefix='val')
+                    self._log(val_only_metrics, step=epoch + 1, prefix='val')
             
             # Save checkpoint
             if self.is_main_process and (epoch + 1) % save_every == 0:
