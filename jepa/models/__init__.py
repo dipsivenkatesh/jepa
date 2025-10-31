@@ -5,8 +5,8 @@ This package provides a flexible JEPA implementation that can work with any enco
 """
 
 from .base import BaseModel
-from .jepa import JEPA, JEPAAction
+from .jepa import JEPA, JEPAAction, JEPAInterleavedAction
 from .encoder import Encoder
 from .predictor import Predictor
 
-__all__ = ['BaseModel', 'JEPA', 'JEPAAction', 'Encoder', 'Predictor']
+__all__ = ['BaseModel', 'JEPA', 'JEPAAction', 'JEPAInterleavedAction', 'Encoder', 'Predictor']

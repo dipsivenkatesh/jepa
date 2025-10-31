@@ -26,13 +26,13 @@ CLI Usage:
     $ python -m jepa.cli evaluate --config config/default_config.yaml
 """
 
-__version__ = "0.1.7"
+__version__ = "0.1.8"
 __author__ = "Dilip Venkatesh"
 __email__ = "your.email@example.com"
 __description__ = "Joint-Embedding Predictive Architecture for Self-Supervised Learning"
 
 # Core model components
-from .models import JEPA, JEPAAction, BaseModel, Encoder, Predictor
+from .models import JEPA, JEPAAction, JEPAInterleavedAction, BaseModel, Encoder, Predictor
 
 # Training framework
 from .trainer import JEPATrainer, JEPAEvaluator, create_trainer
@@ -82,6 +82,7 @@ __all__ = [
     'Encoder',
     'Predictor',
     'JEPAAction',
+    'JEPAInterleavedAction',
     
     # Training
     'JEPATrainer',
