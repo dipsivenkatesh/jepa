@@ -32,7 +32,7 @@ __email__ = "your.email@example.com"
 __description__ = "Joint-Embedding Predictive Architecture for Self-Supervised Learning"
 
 # Core model components
-from .models import JEPA, JEPAAction, JEPAInterleavedAction, BaseModel, Encoder, Predictor
+from .models import JEPA, JEPAAction, JEPAInterleaved, BaseModel, Encoder, Predictor
 
 # Training framework
 from .trainer import JEPATrainer, JEPAEvaluator, create_trainer
